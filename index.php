@@ -11,7 +11,7 @@ if (!file_exists($db_path)) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CS6250 · Study Quiz</title>
-  <link rel="stylesheet" href="assets/css/style.css?v=14">
+  <link rel="stylesheet" href="assets/css/style.css?v=15">
 </head>
 <body>
 
@@ -134,7 +134,7 @@ if (!file_exists($db_path)) {
             </svg>
           </div>
           <div class="mode-title">Upload</div>
-          <div class="mode-sub" id="upload-sub">Load a questions.json file</div>
+          <div class="mode-sub" id="upload-sub">Drop a .json file or click to browse</div>
 
         </div>
 
@@ -194,6 +194,6 @@ if (!file_exists($db_path)) {
   </div>
 </div>
 
-<script src="assets/js/quiz.js?v=14"></script>
+<script src="assets/js/quiz.js?v=15"></script>
 </body>
 </html>

@@ -715,7 +715,10 @@ body.view-home {
 
 /* ── Upload card — dashed drop-target style ───────────────────────────── */
 #card-upload {
-  border-style: dashed !important;
+  border: 1.5px dashed var(--border-med) !important;
+}
+#card-upload:hover {
+  border-color: var(--blue) !important;
 }
 #card-upload.drag-over {
   border-color: var(--green-mid) !important;
@@ -728,6 +731,9 @@ body.view-home {
     inset 0 1.5px 0 rgba(255, 255, 255, .95) !important;
 }
 @media (prefers-color-scheme: dark) {
+  #card-upload {
+    border-color: rgba(255,255,255,0.22) !important;
+  }
   #card-upload.drag-over {
     background: rgba(29, 158, 117, 0.10) !important;
   }

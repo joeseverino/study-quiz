@@ -421,7 +421,7 @@ function updateDeckCard() {
   if (uploadSub) {
     uploadSub.innerHTML = allQuestions.length > 0
       ? 'Change deck'
-      : 'Load a questions.json file';
+      : 'Drop a .json file or click to browse';
   }
 }
 

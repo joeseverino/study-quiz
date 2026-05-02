@@ -11,7 +11,7 @@ if (!file_exists($db_path)) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CS6250 · Study Quiz</title>
-  <link rel="stylesheet" href="assets/css/style.css?v=5">
+  <link rel="stylesheet" href="assets/css/style.css?v=7">
 </head>
 <body>
 
@@ -69,6 +69,25 @@ if (!file_exists($db_path)) {
 
     <!-- ── Home ──────────────────────────────────────────────────────────── -->
     <div id="page-home">
+      <div class="home-content">
+
+      <!-- Resume banner (shown only when a session is in progress) -->
+      <div id="resume-card" class="hidden" role="button" tabindex="0"
+           onclick="resumeSession()"
+           onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();resumeSession()}">
+        <div class="resume-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/>
+            <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
+          </svg>
+        </div>
+        <div class="resume-info">
+          <div class="resume-title">Continue session</div>
+          <div class="resume-sub" id="resume-sub"></div>
+        </div>
+        <div class="resume-arrow">→</div>
+      </div>
+
       <div class="mode-grid">
 
         <!-- Upload -->
@@ -114,7 +133,8 @@ if (!file_exists($db_path)) {
           <div class="mode-sub">5 Georgia Tech questions</div>
         </div>
 
-      </div>
+      </div><!-- /.mode-grid -->
+      </div><!-- /.home-content -->
     </div>
 
     <!-- ── Quiz ───────────────────────────────────────────────────────────── -->
@@ -140,6 +160,6 @@ if (!file_exists($db_path)) {
   </div>
 </div>
 
-<script src="assets/js/quiz.js?v=5"></script>
+<script src="assets/js/quiz.js?v=7"></script>
 </body>
 </html>

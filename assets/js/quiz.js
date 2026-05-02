@@ -1,10 +1,11 @@
 /* quiz.js — CS6250 Study Quiz
-   Questions loaded from a local JSON file (never uploaded to server).
-   Stats tracked server-side via api.php (SQLite). */
+   Fully local: questions are read client-side via FileReader and never leave
+   the browser. Stats (sessions + question accuracy) are stored in localStorage. */
 
-const API        = 'api.php';
-const LS_KEY     = 'cs6250_questions';
-const CREATE_KEY = 'cs6250_created_deck';
+const LS_KEY        = 'cs6250_questions';
+const CREATE_KEY    = 'cs6250_created_deck';
+const SESSIONS_KEY  = 'cs6250_sessions';
+const QSTATS_KEY    = 'cs6250_qstats';
 
 // ── Demo questions ─────────────────────────────────────────────────────────
 const DEMO_QUESTIONS = [
@@ -65,6 +66,9 @@ let currentQ     = null;
 let editView    = 'list'; // 'list' | 'edit' | 'new'
 let editCardIdx = null;
 
+// Resume state — true only while a question is actively on screen
+let quizActive = false;
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 const $  = (s, ctx = document) => ctx.querySelector(s);
 const $$ = (s, ctx = document) => [...ctx.querySelectorAll(s)];
@@ -83,13 +87,83 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-async function api(action, method = 'GET', body = null) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (body) opts.body = JSON.stringify(body);
-  try {
-    const r = await fetch(`${API}?action=${action}`, opts);
-    return await r.json();
-  } catch { return { error: 'Network error' }; }
+// ── Local stats storage ────────────────────────────────────────────────────
+function getSessions() {
+  try { return JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]'); } catch { return []; }
+}
+function saveSessions(s) {
+  try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(s)); } catch {}
+}
+function getQStats() {
+  try { return JSON.parse(localStorage.getItem(QSTATS_KEY) || '{}'); } catch { return {}; }
+}
+function saveQStats(q) {
+  try { localStorage.setItem(QSTATS_KEY, JSON.stringify(q)); } catch {}
+}
+
+function localStartSession(modules) {
+  const session = { id: Date.now(), modules, correct: 0, total: 0,
+                    started_at: new Date().toISOString(), ended_at: null };
+  const all = getSessions();
+  all.push(session);
+  saveSessions(all);
+  return session.id;
+}
+
+function localRecordAnswer(sessionId, questionId, moduleId, correct) {
+  const sessions = getSessions();
+  const s = sessions.find(x => x.id === sessionId);
+  if (s) { s.total++; if (correct) s.correct++; }
+  saveSessions(sessions);
+
+  const qstats = getQStats();
+  if (!qstats[questionId]) {
+    qstats[questionId] = { question_id: questionId, module_id: moduleId,
+                            total_attempts: 0, correct_count: 0, last_seen: null };
+  }
+  qstats[questionId].total_attempts++;
+  if (correct) qstats[questionId].correct_count++;
+  qstats[questionId].last_seen = new Date().toISOString();
+  saveQStats(qstats);
+}
+
+function localEndSession(sessionId) {
+  const sessions = getSessions();
+  const s = sessions.find(x => x.id === sessionId);
+  if (s) s.ended_at = new Date().toISOString();
+  saveSessions(sessions);
+}
+
+function localGetStats() {
+  const sessions = getSessions().filter(s => s.ended_at !== null);
+  const qstats   = getQStats();
+
+  const totals = {
+    total_sessions: sessions.length,
+    total_answered: sessions.reduce((n, s) => n + s.total,   0),
+    total_correct:  sessions.reduce((n, s) => n + s.correct, 0),
+  };
+
+  // Most-recent first, last 20, modules serialised to match renderer
+  const recent = [...sessions]
+    .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
+    .slice(0, 20)
+    .map(s => ({ ...s, modules: JSON.stringify(s.modules) }));
+
+  const weak = Object.values(qstats)
+    .filter(q => q.total_attempts >= 2)
+    .map(q => ({ ...q,
+      wrong_count: q.total_attempts - q.correct_count,
+      pct: Math.round(100 * q.correct_count / q.total_attempts * 10) / 10,
+    }))
+    .sort((a, b) => a.pct - b.pct)
+    .slice(0, 10);
+
+  return { totals, sessions: recent, weak };
+}
+
+function localResetStats() {
+  try { localStorage.removeItem(SESSIONS_KEY); localStorage.removeItem(QSTATS_KEY); } catch {}
 }
 
 // ── View switching ─────────────────────────────────────────────────────────
@@ -99,6 +173,26 @@ function setView(v) {
   $('#page-quiz').classList.toggle('hidden',  v !== 'quiz');
   $('#page-stats').classList.toggle('hidden', v !== 'stats');
   if (v === 'stats') loadStats();
+  if (v === 'home')  updateResumeCard();
+}
+
+function updateResumeCard() {
+  const card = document.getElementById('resume-card');
+  const sub  = document.getElementById('resume-sub');
+  if (!card) return;
+  if (quizActive && deck.length > 0) {
+    const q         = deck[deckPos];
+    const modLabel  = q ? (q.mod_name || `Module ${q.mod}`) : '';
+    const scoreText = sessionTotal > 0 ? ` · ${sessionRight}/${sessionTotal} correct` : '';
+    if (sub) sub.textContent = `${modLabel} · Q ${deckPos + 1} of ${deck.length}${scoreText}`;
+    card.classList.remove('hidden');
+  } else {
+    card.classList.add('hidden');
+  }
+}
+
+function resumeSession() {
+  setView('quiz');
 }
 
 // ── Modal system ───────────────────────────────────────────────────────────
@@ -214,9 +308,9 @@ function updateUploadCard() {
   const sub = $('#upload-sub');
   if (!sub) return;
   if (allQuestions.length > 0) {
-    sub.innerHTML = `<span style="color:var(--green-mid)">${loadedFileName} · ${allQuestions.length} questions</span>`;
+    sub.innerHTML = `<span style="color:var(--green-mid)">${escapeHtml(loadedFileName)} · ${allQuestions.length} questions</span>`;
   } else {
-    sub.textContent = 'Load a questions.json file';
+    sub.innerHTML = `Drop .json here<br><span style="font-size:10px;opacity:.75">or click to browse</span>`;
   }
 }
 
@@ -261,6 +355,8 @@ function renderModalModuleSelector() {
 }
 
 function clearQuestions() {
+  quizActive     = false;
+  deck           = [];
   allQuestions   = [];
   allModules     = [];
   selectedMods   = new Set();
@@ -525,10 +621,10 @@ function menuResetCancel() {
   document.getElementById('mi-reset')?.classList.remove('hidden');
   document.getElementById('mi-reset-confirm')?.classList.add('hidden');
 }
-async function menuResetGo() {
+function menuResetGo() {
   closeMenu();
   menuResetCancel();
-  await api('reset_stats', 'POST');
+  localResetStats();
   if (!$('#page-stats').classList.contains('hidden')) loadStats();
 }
 
@@ -696,19 +792,17 @@ function deleteEditCard(i) {
 }
 
 // ── Quiz start ─────────────────────────────────────────────────────────────
-async function startQuiz() {
+function startQuiz() {
+  quizActive   = false;
   const pool   = allQuestions.filter(q => selectedMods.has(q.mod));
-  deck         = shuffle(pool);   // always shuffled
+  deck         = shuffle(pool);
   deckPos      = 0;
   round        = 1;
   sessionRight = 0;
   sessionTotal = 0;
   sessionByMod = {};
   answered     = false;
-
-  const res = await api('start_session', 'POST', { modules: [...selectedMods] });
-  sessionId = res.session_id || null;
-
+  sessionId    = localStartSession([...selectedMods]);
   restoreQuizShell();
   setView('quiz');
   renderQuestion();
@@ -740,8 +834,9 @@ function restoreQuizShell() {
 
 // ── Render question ────────────────────────────────────────────────────────
 function renderQuestion() {
-  answered = false;
-  currentQ = deck[deckPos];
+  quizActive = true;
+  answered   = false;
+  currentQ   = deck[deckPos];
   const total = getPool().length;
   const pos   = deckPos + 1;
   const isTF  = currentQ.type === 'T/F';
@@ -816,12 +911,7 @@ async function pickAnswer(chosen) {
   $('#session-score').textContent = `Session: ${sessionRight} / ${sessionTotal} correct`;
 
   if (sessionId) {
-    api('answer', 'POST', {
-      session_id:  sessionId,
-      question_id: currentQ.id,
-      module_id:   currentQ.mod,
-      correct:     correct ? 1 : 0,
-    });
+    localRecordAnswer(sessionId, currentQ.id, currentQ.mod, correct ? 1 : 0);
   }
 }
 
@@ -857,13 +947,15 @@ function nextQuestion() {
   renderQuestion();
 }
 
-async function quitQuiz() {
-  if (sessionId) await api('end_session', 'POST', { session_id: sessionId });
+function quitQuiz() {
+  quizActive = false;
+  if (sessionId) localEndSession(sessionId);
   showResults();
 }
 
 // ── Results ────────────────────────────────────────────────────────────────
 function showResults() {
+  quizActive = false;
   if (sessionTotal === 0) { setView('home'); return; }
 
   const n   = sessionTotal;
@@ -916,7 +1008,7 @@ function showResults() {
     </div>`;
 }
 
-async function restartSame() {
+function restartSame() {
   deck         = shuffle(getPool());
   deckPos      = 0;
   round        = 1;
@@ -924,29 +1016,20 @@ async function restartSame() {
   sessionTotal = 0;
   sessionByMod = {};
   answered     = false;
-
-  const res = await api('start_session', 'POST', { modules: [...selectedMods] });
-  sessionId = res.session_id || null;
-
+  sessionId    = localStartSession([...selectedMods]);
   restoreQuizShell();
   renderQuestion();
 }
 
 // ── Stats ──────────────────────────────────────────────────────────────────
-async function loadStats() {
+function loadStats() {
   const page = $('#page-stats');
   page.innerHTML = '<div class="spinner"></div>';
 
-  const res = await api('stats');
-  if (res.error) {
-    page.innerHTML = `<div class="card empty-state"><p>${res.error}</p></div>`;
-    return;
-  }
-
-  const { totals, sessions, weak } = res;
-  const ta  = parseInt(totals.total_answered) || 0;
-  const tc  = parseInt(totals.total_correct)  || 0;
-  const ts  = parseInt(totals.total_sessions) || 0;
+  const { totals, sessions, weak } = localGetStats();
+  const ta  = totals.total_answered || 0;
+  const tc  = totals.total_correct  || 0;
+  const ts  = totals.total_sessions || 0;
   const pct = ta > 0 ? Math.round(tc / ta * 100) : 0;
 
   const sessionRows = sessions.length === 0
@@ -958,7 +1041,7 @@ async function loadStats() {
         const cls = p >= 70 ? 'good' : p >= 50 ? 'mid' : 'low';
         const dt  = (() => {
           try {
-            return new Date(s.started_at.replace(' ', 'T') + 'Z')
+            return new Date(s.started_at)
               .toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
           } catch { return s.started_at; }
         })();

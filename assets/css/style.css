@@ -533,6 +533,64 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   padding: 2rem;
 }
 
+/* ── Home content wrapper ─────────────────────────────────────────────── */
+.home-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 580px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Resume banner ────────────────────────────────────────────────────── */
+#resume-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 18px;
+  background: rgba(29, 158, 117, 0.10);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(29, 158, 117, 0.28);
+  border-radius: 16px;
+  box-shadow: 0 4px 16px rgba(29, 158, 117, .08), inset 0 1px 0 rgba(255,255,255,.6);
+  cursor: pointer;
+  transition: transform .2s cubic-bezier(.34,1.56,.64,1), box-shadow .2s, background .15s;
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+}
+#resume-card:hover {
+  transform: translateY(-2px) scale(1.01);
+  background: rgba(29, 158, 117, 0.15);
+  box-shadow: 0 10px 28px rgba(29, 158, 117, .14), inset 0 1px 0 rgba(255,255,255,.7);
+}
+#resume-card:active        { transform: scale(.98); transition-duration: .08s; }
+#resume-card:focus-visible { outline: 2px solid var(--green-mid); outline-offset: 3px; }
+#resume-card.hidden        { display: none !important; }
+
+.resume-icon  { color: var(--green-mid); flex-shrink: 0; display: flex; }
+.resume-info  { flex: 1; min-width: 0; }
+.resume-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.resume-sub   { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+.resume-arrow { font-size: 16px; color: var(--green-mid); flex-shrink: 0; }
+
+@media (prefers-color-scheme: dark) {
+  #resume-card {
+    background: rgba(29, 158, 117, 0.12);
+    border-color: rgba(29, 158, 117, 0.22);
+    box-shadow: 0 4px 16px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  #resume-card:hover {
+    background: rgba(29, 158, 117, 0.18);
+    box-shadow: 0 10px 28px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08);
+  }
+}
+
 /* ── Mode grid ────────────────────────────────────────────────────────── */
 .mode-grid {
   display: grid;
@@ -540,8 +598,6 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   gap: 16px;
   width: 100%;
   max-width: 580px;
-  position: relative;
-  z-index: 1;
 }
 
 /* div-based cards (avoids all the global `button` rule conflicts) */
@@ -650,6 +706,7 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 }
 
 @media (max-width: 520px) {
+  .home-content { gap: 12px; }
   .mode-grid { gap: 10px; }
   .mode-card { border-radius: 16px; gap: 9px; }
   .mode-icon-wrap { width: 44px; height: 44px; border-radius: 11px; }

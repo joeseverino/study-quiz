@@ -73,6 +73,10 @@ let pendingImportData = null;
 // Resume state — true whenever a session is actively in progress
 let quizActive = false;
 
+// Create-deck form state (live across re-renders of the card list)
+let createOpts    = ['', '', '', ''];
+let createCorrect = 0;
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 const $  = (s, ctx = document) => ctx.querySelector(s);
 const $$ = (s, ctx = document) => [...ctx.querySelectorAll(s)];
@@ -553,9 +557,92 @@ function updateCreateCard() {
     : 'Build your own deck';
 }
 
+// ── Create-deck form helpers ───────────────────────────────────────────────
+function resetCreateForm() {
+  createOpts    = ['', '', '', ''];
+  createCorrect = 0;
+}
+
+// Read current input values into createOpts without losing other state
+function syncCreateOpts() {
+  document.querySelectorAll('.create-opt-input').forEach((inp, i) => {
+    if (i < createOpts.length) createOpts[i] = inp.value;
+  });
+}
+
+// Render the dynamic option rows inside #create-opts-wrap
+function renderCreateOptionRows() {
+  const wrap = document.getElementById('create-opts-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+
+  createOpts.forEach((val, i) => {
+    const row = document.createElement('div');
+    row.className = 'cr-opt-row' + (createCorrect === i ? ' is-correct' : '');
+
+    // Numbered circle — click to mark as correct answer
+    const numBtn = document.createElement('button');
+    numBtn.type      = 'button';
+    numBtn.className = 'cr-opt-num' + (createCorrect === i ? ' correct' : '');
+    numBtn.title     = 'Mark as correct answer';
+    numBtn.textContent = i + 1;
+    numBtn.addEventListener('click', () => {
+      syncCreateOpts();
+      createCorrect = i;
+      renderCreateOptionRows();
+    });
+
+    // Text input
+    const inp = document.createElement('input');
+    inp.className   = 'create-opt-input';
+    inp.id          = `co-${i}`;
+    inp.value       = val;
+    inp.placeholder = `Option ${i + 1}`;
+
+    row.appendChild(numBtn);
+    row.appendChild(inp);
+
+    // Remove button — only show when >2 options
+    if (createOpts.length > 2) {
+      const delBtn = document.createElement('button');
+      delBtn.type      = 'button';
+      delBtn.className = 'cr-opt-del';
+      delBtn.title     = 'Remove this option';
+      delBtn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+      delBtn.addEventListener('click', () => {
+        syncCreateOpts();
+        createOpts.splice(i, 1);
+        if (createCorrect >= createOpts.length) createCorrect = createOpts.length - 1;
+        renderCreateOptionRows();
+      });
+      row.appendChild(delBtn);
+    }
+
+    wrap.appendChild(row);
+  });
+
+  // Add option button — cap at 8
+  if (createOpts.length < 8) {
+    const addBtn = document.createElement('button');
+    addBtn.type      = 'button';
+    addBtn.className = 'cr-add-opt';
+    addBtn.textContent = '+ Add option';
+    addBtn.addEventListener('click', () => {
+      syncCreateOpts();
+      createOpts.push('');
+      renderCreateOptionRows();
+      setTimeout(() => document.getElementById(`co-${createOpts.length - 1}`)?.focus(), 40);
+    });
+    wrap.appendChild(addBtn);
+  }
+}
+
 function renderCreateModal() {
   const createdDeck = getCreatedDeck();
   const hasCards    = createdDeck.length > 0;
+
+  // Reset form for a fresh entry each time the modal is opened / a card is added
+  resetCreateForm();
 
   $('#modal-content').innerHTML = `
     <div class="create-form">
@@ -564,33 +651,21 @@ function renderCreateModal() {
         <textarea id="create-q" rows="3" placeholder="Type your question here…"></textarea>
       </div>
       <div class="form-group">
-        <label>Options</label>
-        <div class="create-opts-grid">
-          <input id="opt-0" placeholder="Option 1" />
-          <input id="opt-1" placeholder="Option 2" />
-          <input id="opt-2" placeholder="Option 3" />
-          <input id="opt-3" placeholder="Option 4" />
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Correct answer</label>
-        <select id="create-correct">
-          <option value="0">Option 1</option>
-          <option value="1">Option 2</option>
-          <option value="2">Option 3</option>
-          <option value="3">Option 4</option>
-        </select>
+        <label>Options
+          <span class="form-optional">— click a number to mark it correct</span>
+        </label>
+        <div id="create-opts-wrap"></div>
       </div>
       <div class="form-group">
         <label>Explanation <span class="form-optional">(optional)</span></label>
         <textarea id="create-exp" rows="2" placeholder="Explain the correct answer…"></textarea>
       </div>
-      <button class="btn btn-primary btn-block" onclick="addCreateCard()">+ Add question</button>
-      <p id="create-add-error" style="color:var(--red);font-size:12px;margin-top:6px;display:none"></p>
+      <p id="create-add-error" style="color:var(--red);font-size:12px;margin-bottom:8px;display:none"></p>
+      <button class="btn btn-primary btn-block" onclick="addCreateCard()">+ Add to deck</button>
     </div>
 
     ${hasCards ? `
-    <div style="margin-top:18px">
+    <div style="margin-top:20px">
       <div class="section-label">Deck · ${createdDeck.length} question${createdDeck.length !== 1 ? 's' : ''}</div>
       <div class="create-card-list">
         ${createdDeck.map((q, i) => createCardItemHTML(q, i)).join('')}
@@ -601,6 +676,8 @@ function renderCreateModal() {
       <button class="btn btn-primary" onclick="studyCreatedDeck()">Study these →</button>
     </div>
     ` : ''}`;
+
+  renderCreateOptionRows();
 }
 
 function createCardItemHTML(q, i) {
@@ -615,50 +692,61 @@ function createCardItemHTML(q, i) {
 }
 
 function addCreateCard() {
+  // Sync inputs → createOpts before reading
+  syncCreateOpts();
+
   const qText = ($('#create-q').value || '').trim();
-  const opts  = [
-    ($('#opt-0').value || '').trim(),
-    ($('#opt-1').value || '').trim(),
-    ($('#opt-2').value || '').trim(),
-    ($('#opt-3').value || '').trim(),
-  ];
-  const ans   = parseInt($('#create-correct').value);
   const exp   = ($('#create-exp').value || '').trim();
   const errEl = $('#create-add-error');
 
-  if (!qText)        { errEl.textContent = 'Please enter a question.'; errEl.style.display = ''; return; }
-  if (!opts[0])      { errEl.textContent = 'Please fill in Option 1.'; errEl.style.display = ''; return; }
-  if (!opts[1])      { errEl.textContent = 'Please fill in Option 2.'; errEl.style.display = ''; return; }
-  if (!opts[2])      { errEl.textContent = 'Please fill in Option 3.'; errEl.style.display = ''; return; }
-  if (!opts[3])      { errEl.textContent = 'Please fill in Option 4.'; errEl.style.display = ''; return; }
+  if (!qText) { errEl.textContent = 'Please enter a question.'; errEl.style.display = ''; return; }
+
+  const trimmedOpts = createOpts.map(o => o.trim());
+  for (let i = 0; i < trimmedOpts.length; i++) {
+    if (!trimmedOpts[i]) {
+      errEl.textContent = `Please fill in Option ${i + 1}.`;
+      errEl.style.display = '';
+      return;
+    }
+  }
   errEl.style.display = 'none';
 
-  const deck = getCreatedDeck();
-  deck.push({
+  const d = getCreatedDeck();
+  d.push({
     id:       `created_${Date.now()}`,
     mod:      1,
     mod_name: 'My Deck',
     type:     'MCQ',
     q:        qText,
-    opts,
-    ans,
+    opts:     trimmedOpts,
+    ans:      createCorrect,
     exp,
   });
-  saveCreatedDeck(deck);
-  renderCreateModal();
+  saveCreatedDeck(d);
+  renderCreateModal(); // resets form + shows updated list
 }
 
 function deleteCreateCard(idx) {
-  const deck = getCreatedDeck();
-  deck.splice(idx, 1);
-  saveCreatedDeck(deck);
-  renderCreateModal();
+  const d = getCreatedDeck();
+  d.splice(idx, 1);
+  saveCreatedDeck(d);
+  // Rebuild just the card list without touching the form
+  const listWrap = document.querySelector('.create-card-list');
+  const label    = document.querySelector('.section-label');
+  if (d.length === 0) {
+    // Remove the whole deck section
+    document.querySelector('.create-footer')?.remove();
+    listWrap?.closest('div')?.remove();
+  } else {
+    if (label) label.textContent = `Deck · ${d.length} question${d.length !== 1 ? 's' : ''}`;
+    if (listWrap) listWrap.innerHTML = d.map((q, i) => createCardItemHTML(q, i)).join('');
+  }
 }
 
 function exportCreatedDeck() {
-  const deck = getCreatedDeck();
-  if (!deck.length) return;
-  const blob = new Blob([JSON.stringify(deck, null, 2)], { type: 'application/json' });
+  const d = getCreatedDeck();
+  if (!d.length) return;
+  const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
@@ -668,10 +756,10 @@ function exportCreatedDeck() {
 }
 
 function studyCreatedDeck() {
-  const deck = getCreatedDeck();
-  if (!deck.length) return;
-  allQuestions   = deck;
-  allModules     = [{ id: 1, name: 'My Deck', count: deck.length }];
+  const d = getCreatedDeck();
+  if (!d.length) return;
+  allQuestions   = d;
+  allModules     = [{ id: 1, name: 'My Deck', count: d.length }];
   selectedMods   = new Set([1]);
   loadedFileName = 'my-deck.json';
   closeModal();
@@ -763,18 +851,25 @@ function menuExportStats() {
     loadedFileName,
   } : null;
 
+  // Include the full questions array so the import is completely self-contained
+  // (no need to separately load questions.json on the destination device)
+  const questionsPayload = allQuestions.length > 0
+    ? { filename: loadedFileName, data: allQuestions }
+    : null;
+
   const payload = {
-    version:     2,
+    version:     3,
     exported_at: new Date().toISOString(),
     sessions,
     qstats,
     deckState,
+    questions:   questionsPayload,
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = `cs6250_stats_${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `cs6250_save_${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -794,13 +889,16 @@ function menuImportStats() {
           throw new Error('Not a valid stats file.');
         }
         pendingImportData = data;
-        const n   = data.sessions.length;
-        const hasDeck = !!(data.deckState && data.deckState.deckIds?.length);
+        const n        = data.sessions.length;
+        const hasDeck  = !!(data.deckState && data.deckState.deckIds?.length);
+        const hasQs    = !!(data.questions?.data?.length);
+        const qCount   = hasQs ? data.questions.data.length : 0;
         const msg = document.getElementById('mi-import-msg');
         if (msg) {
-          msg.textContent = hasDeck
-            ? `Import ${n} session${n !== 1 ? 's' : ''} + resume position?`
-            : `Replace with ${n} session${n !== 1 ? 's' : ''}?`;
+          let line = `${n} session${n !== 1 ? 's' : ''}`;
+          if (hasQs)   line += ` · ${qCount} questions`;
+          if (hasDeck) line += ` · resume at Q${(data.deckState.deckPos || 0) + 1}`;
+          msg.textContent = `Load save: ${line}`;
         }
         document.getElementById('mi-import-stats').classList.add('hidden');
         document.getElementById('mi-export-stats').disabled = true;
@@ -821,15 +919,31 @@ function menuImportGo() {
   const importedSessions = (pendingImportData.sessions || []).map(s =>
     s.ended_at ? s : { ...s, ended_at: new Date().toISOString() }
   );
-
   localStorage.setItem(SESSIONS_KEY, JSON.stringify(importedSessions));
   localStorage.setItem(QSTATS_KEY,   JSON.stringify(pendingImportData.qstats || {}));
 
+  // ── Apply bundled questions if present (makes import self-contained) ──────
+  if (pendingImportData.questions?.data?.length) {
+    const { filename, data } = pendingImportData.questions;
+    // Directly set questions state — bypass applyQuestions() to avoid
+    // ending any session we're about to restore from the deckState
+    allQuestions   = data;
+    loadedFileName = filename || 'questions.json';
+    const modMap   = {};
+    data.forEach(q => {
+      if (!modMap[q.mod]) modMap[q.mod] = { id: q.mod, name: q.mod_name || `Module ${q.mod}`, count: 0 };
+      modMap[q.mod].count++;
+    });
+    allModules = Object.values(modMap).sort((a, b) => a.id - b.id);
+    // Persist to localStorage so they survive a page refresh
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ filename: loadedFileName, questions: data })); } catch {}
+    updateDeckCard();
+  }
+
+  // ── Restore deck position ─────────────────────────────────────────────────
   if (pendingImportData.deckState) {
-    // Save deck state; will be restored when (or if) matching questions are loaded
     localStorage.setItem(DECK_STATE_KEY, JSON.stringify(pendingImportData.deckState));
-    // Try immediately — questions may already be loaded
-    tryRestoreDeckState();
+    tryRestoreDeckState(); // works immediately now that questions are loaded above
   } else {
     localStorage.removeItem(DECK_STATE_KEY);
   }

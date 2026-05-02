@@ -950,6 +950,100 @@ body.view-home {
 .create-card-del:hover  { color: var(--red);  background: var(--red-bg);  }
 .create-card-edit:hover { color: var(--blue); background: var(--blue-bg); }
 
+/* ── Create-deck option rows ──────────────────────────────────────────── */
+.cr-opt-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+.cr-opt-row:last-of-type { margin-bottom: 0; }
+
+/* Numbered circle — click to pick correct answer */
+.cr-opt-num {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-med);
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, color .15s;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+}
+.cr-opt-num:hover:not(.correct) {
+  border-color: var(--green-mid);
+  color: var(--green-mid);
+}
+.cr-opt-num.correct {
+  border-color: var(--green-mid);
+  background: var(--green-mid);
+  color: #fff;
+}
+
+/* Option text input */
+.create-opt-input {
+  flex: 1;
+  background: var(--surface2);
+  border: 0.5px solid var(--border-med);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: var(--font);
+  color: var(--text);
+  min-width: 0;
+  transition: border-color .15s, background .15s;
+}
+.create-opt-input:focus {
+  outline: none;
+  border-color: var(--blue);
+  background: var(--surface);
+}
+/* Highlight the correct-answer row's input */
+.cr-opt-row.is-correct .create-opt-input {
+  border-color: rgba(29, 158, 117, 0.45);
+  background: var(--green-bg);
+}
+
+/* Remove-option button */
+.cr-opt-del {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+  transition: background .12s, color .12s;
+}
+.cr-opt-del:hover { background: var(--red-bg); color: var(--red); }
+
+/* Add option dashed button */
+.cr-add-opt {
+  width: 100%;
+  padding: 7px;
+  border: 1.5px dashed var(--border-med);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-3);
+  font-size: 13px;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.cr-add-opt:hover {
+  border-color: var(--green-mid);
+  color: var(--green-mid);
+  background: var(--green-bg);
+}
+
 /* Create footer */
 .create-footer {
   display: flex;

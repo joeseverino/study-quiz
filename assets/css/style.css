@@ -734,13 +734,35 @@ body.view-home {
 }
 
 @media (max-width: 520px) {
-  .home-content { gap: 12px; }
-  .mode-grid { gap: 10px; }
-  .mode-card { border-radius: 16px; gap: 9px; }
-  .mode-icon-wrap { width: 44px; height: 44px; border-radius: 11px; }
-  .mode-icon-wrap svg { width: 22px; height: 22px; }
-  .mode-title { font-size: 13px; }
-  .mode-sub { font-size: 10px; }
+  .home-content { gap: 10px; }
+
+  /* Single column, cards fill the content width */
+  .mode-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    max-width: 340px;
+    margin: 0 auto;
+  }
+
+  /* Horizontal strip: icon left, text right */
+  .mode-card {
+    aspect-ratio: unset;
+    flex-direction: row;
+    justify-content: flex-start;
+    text-align: left;
+    padding: 14px 18px;
+    gap: 14px;
+    border-radius: 14px;
+  }
+
+  .mode-icon-wrap {
+    width: 42px; height: 42px;
+    border-radius: 11px;
+    flex-shrink: 0;
+  }
+  .mode-icon-wrap svg { width: 20px; height: 20px; }
+  .mode-title { font-size: 14px; }
+  .mode-sub   { font-size: 12px; max-width: none; }
 }
 
 /* ── Modal overlay ────────────────────────────────────────────────────── */

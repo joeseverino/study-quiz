@@ -66,6 +66,9 @@ let currentQ     = null;
 let editView    = 'list'; // 'list' | 'edit' | 'new'
 let editCardIdx = null;
 
+// Stats import pending data
+let pendingImportData = null;
+
 // Resume state — true only while a question is actively on screen
 let quizActive = false;
 
@@ -110,7 +113,7 @@ function localStartSession(modules) {
   return session.id;
 }
 
-function localRecordAnswer(sessionId, questionId, moduleId, correct) {
+function localRecordAnswer(sessionId, questionId, moduleId, correct, questionObj) {
   const sessions = getSessions();
   const s = sessions.find(x => x.id === sessionId);
   if (s) { s.total++; if (correct) s.correct++; }
@@ -118,7 +121,16 @@ function localRecordAnswer(sessionId, questionId, moduleId, correct) {
 
   const qstats = getQStats();
   if (!qstats[questionId]) {
-    qstats[questionId] = { question_id: questionId, module_id: moduleId,
+    // Store card details on first encounter so the export is self-contained
+    const card = questionObj ? {
+      q:        questionObj.q    || null,
+      opts:     questionObj.opts || null,
+      ans:      questionObj.ans  ?? null,
+      mod_name: questionObj.mod_name || null,
+      type:     questionObj.type || 'MCQ',
+      exp:      questionObj.exp  || null,
+    } : null;
+    qstats[questionId] = { question_id: questionId, module_id: moduleId, card,
                             total_attempts: 0, correct_count: 0, last_seen: null };
   }
   qstats[questionId].total_attempts++;
@@ -172,6 +184,7 @@ function setView(v) {
   $('#page-home').classList.toggle('hidden',  v !== 'home');
   $('#page-quiz').classList.toggle('hidden',  v !== 'quiz');
   $('#page-stats').classList.toggle('hidden', v !== 'stats');
+  document.body.classList.toggle('view-home', v === 'home');
   if (v === 'stats') loadStats();
   if (v === 'home')  updateResumeCard();
 }
@@ -590,13 +603,15 @@ function toggleMenu(e) {
   const dropdown = document.getElementById('menu-dropdown');
   const isOpen   = !dropdown.classList.contains('hidden');
   if (isOpen) { closeMenu(); return; }
-  menuResetCancel(); // reset any leftover confirm state
+  menuResetCancel();   // reset any leftover confirm state
+  menuImportCancel();  // reset any leftover import confirm state
   updateMenuStates();
   dropdown.classList.remove('hidden');
   document.getElementById('menu-btn').classList.add('open');
 }
 
 function closeMenu() {
+  menuImportCancel();
   document.getElementById('menu-dropdown')?.classList.add('hidden');
   document.getElementById('menu-btn')?.classList.remove('open');
 }
@@ -626,6 +641,68 @@ function menuResetGo() {
   menuResetCancel();
   localResetStats();
   if (!$('#page-stats').classList.contains('hidden')) loadStats();
+}
+
+// ── Stats export / import ───────────────────────────────────────────────────
+function menuExportStats() {
+  closeMenu();
+  const sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
+  const qstats   = JSON.parse(localStorage.getItem(QSTATS_KEY)   || '{}');
+  const payload  = { version: 1, exported_at: new Date().toISOString(), sessions, qstats };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `cs6250_stats_${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function menuImportStats() {
+  const input    = document.createElement('input');
+  input.type     = 'file';
+  input.accept   = '.json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader   = new FileReader();
+    reader.onload  = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!Array.isArray(data.sessions) || typeof data.qstats !== 'object') {
+          throw new Error('Not a valid stats file.');
+        }
+        pendingImportData = data;
+        const n   = data.sessions.length;
+        const msg = document.getElementById('mi-import-msg');
+        if (msg) msg.textContent = `Replace with ${n} session${n !== 1 ? 's' : ''}?`;
+        document.getElementById('mi-import-stats').classList.add('hidden');
+        document.getElementById('mi-export-stats').disabled = true;
+        document.getElementById('mi-import-confirm').classList.remove('hidden');
+      } catch (err) {
+        alert('Could not import: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function menuImportGo() {
+  if (!pendingImportData) return;
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(pendingImportData.sessions));
+  localStorage.setItem(QSTATS_KEY,   JSON.stringify(pendingImportData.qstats));
+  pendingImportData = null;
+  closeMenu();
+  if (!$('#page-stats').classList.contains('hidden')) loadStats();
+}
+
+function menuImportCancel() {
+  pendingImportData = null;
+  document.getElementById('mi-import-stats')?.classList.remove('hidden');
+  const exportBtn = document.getElementById('mi-export-stats');
+  if (exportBtn) exportBtn.disabled = false;
+  document.getElementById('mi-import-confirm')?.classList.add('hidden');
 }
 
 // ── Edit modal ──────────────────────────────────────────────────────────────
@@ -911,7 +988,7 @@ async function pickAnswer(chosen) {
   $('#session-score').textContent = `Session: ${sessionRight} / ${sessionTotal} correct`;
 
   if (sessionId) {
-    localRecordAnswer(sessionId, currentQ.id, currentQ.mod, correct ? 1 : 0);
+    localRecordAnswer(sessionId, currentQ.id, currentQ.mod, correct ? 1 : 0, currentQ);
   }
 }
 
@@ -1090,6 +1167,9 @@ function loadStats() {
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // Start on home view — apply scroll lock immediately
+  document.body.classList.add('view-home');
+
   // Nav buttons
   $$('nav button[data-view]').forEach(btn => {
     btn.addEventListener('click', () => setView(btn.dataset.view));

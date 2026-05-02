@@ -189,13 +189,15 @@ nav button.active { background: var(--surface2); color: var(--text); font-weight
 
 .menu-divider { height: 0.5px; background: var(--border); margin: 4px 0; }
 
-.menu-reset-confirm {
+.menu-reset-confirm,
+.menu-import-confirm {
   padding: 8px 10px 6px;
   border-radius: 6px;
   background: var(--surface2);
   margin-top: 2px;
 }
-.menu-reset-confirm p { font-size: 12px; color: var(--text-2); margin-bottom: 8px; }
+.menu-reset-confirm p,
+.menu-import-confirm p { font-size: 12px; color: var(--text-2); margin-bottom: 8px; }
 .menu-confirm-btns { display: flex; gap: 6px; }
 .menu-confirm-btns .btn { flex: 1; font-size: 12px; padding: 5px 10px; }
 .menu-confirm-btns .btn:first-child { color: var(--red); border-color: currentColor; }
@@ -526,7 +528,7 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 /* ── Home page layout ─────────────────────────────────────────────────── */
 #page-home {
   height: calc(100vh - 52px);
-  overflow: hidden;
+  height: calc(100dvh - 52px); /* dynamic viewport — iOS Safari fix */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -534,6 +536,13 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   /* escape main's padding so cards go edge-to-edge */
   margin: -2rem -1rem;
   padding: 2rem;
+}
+
+/* Scroll-lock when home is active (position:fixed required for iOS rubber-band) */
+body.view-home {
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
 }
 
 /* ── Home content wrapper ─────────────────────────────────────────────── */

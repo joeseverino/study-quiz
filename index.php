@@ -32,40 +32,27 @@ if (!file_exists($db_path)) {
 
     <!-- ── Home ──────────────────────────────────────────────────────────── -->
     <div id="page-home">
+      <div class="mode-grid">
 
-      <!-- File loader (shown when no questions cached) -->
-      <div id="file-loader" class="card mb-2" style="display:none">
-        <label id="file-label" style="cursor:pointer;display:block">
-          <div class="file-inner">
-            <div class="file-icon">📂</div>
-            <div class="file-title">Load your questions file</div>
-            <div class="file-sub">Click to select <code>questions.json</code> from your computer</div>
-            <span class="btn btn-primary btn-sm" style="pointer-events:none">Choose file</span>
-          </div>
-          <input type="file" id="file-input" accept=".json,application/json" style="display:none">
-        </label>
-        <p class="text-muted" style="font-size:12px;text-align:center">
-          Read locally in your browser — nothing is uploaded to the server.
-        </p>
-        <p id="file-error" class="text-muted mt-1" style="color:var(--red);display:none;text-align:center"></p>
+        <button class="mode-card" onclick="openModal('upload')">
+          <div class="mode-icon">📁</div>
+          <div class="mode-title">Upload</div>
+          <div class="mode-sub" id="upload-sub">Load a questions.json file</div>
+        </button>
+
+        <button class="mode-card" onclick="openModal('create')">
+          <div class="mode-icon">✏️</div>
+          <div class="mode-title">Create</div>
+          <div class="mode-sub" id="create-sub">Build your own deck</div>
+        </button>
+
+        <button class="mode-card" onclick="openModal('demo')">
+          <div class="mode-icon">▶️</div>
+          <div class="mode-title">Demo</div>
+          <div class="mode-sub">5 Georgia Tech questions</div>
+        </button>
+
       </div>
-
-      <!-- Module selector (shown once questions are loaded) -->
-      <div id="module-selector" class="card mb-2" style="display:none">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-          <div>
-            <span id="file-loaded-name" style="font-size:14px;font-weight:500;color:var(--text)"></span>
-            <span id="file-loaded-count" class="text-muted" style="font-size:13px;margin-left:6px"></span>
-          </div>
-          <button class="btn btn-sm" id="change-file-btn">Change file</button>
-        </div>
-        <p class="text-muted mb-2" style="font-size:13px">
-          Pick modules to study. Questions are randomized every session.
-        </p>
-        <div class="mod-grid" id="mod-grid"></div>
-        <button id="start-btn" class="btn btn-primary btn-block mt-1" disabled>Start →</button>
-      </div>
-
     </div>
 
     <!-- ── Quiz ───────────────────────────────────────────────────────────── -->
@@ -77,6 +64,18 @@ if (!file_exists($db_path)) {
     </div>
 
   </main>
+
+</div>
+
+<!-- ── Modal overlay ─────────────────────────────────────────────────────── -->
+<div id="modal-overlay" class="hidden" onclick="handleOverlayClick(event)">
+  <div id="modal-box">
+    <div id="modal-header">
+      <span id="modal-title"></span>
+      <button id="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div id="modal-content"></div>
+  </div>
 </div>
 
 <script src="assets/js/quiz.js"></script>

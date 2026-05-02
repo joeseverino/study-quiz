@@ -1,11 +1,51 @@
 /* quiz.js — CS6250 Study Quiz
-   Questions are loaded from a local JSON file (never uploaded to the server).
-   Stats are tracked server-side via api.php. */
+   Questions loaded from a local JSON file (never uploaded to server).
+   Stats tracked server-side via api.php (SQLite). */
 
-const API    = 'api.php';
-const LS_KEY = 'cs6250_questions';
+const API        = 'api.php';
+const LS_KEY     = 'cs6250_questions';
+const CREATE_KEY = 'cs6250_created_deck';
 
-// ── State ─────────────────────────────────────────────────────────────────
+// ── Demo questions ─────────────────────────────────────────────────────────
+const DEMO_QUESTIONS = [
+  {
+    id: 'demo_1', mod: 0, mod_name: 'Georgia Tech Trivia', type: 'MCQ',
+    q: 'What year was the Georgia Institute of Technology founded?',
+    opts: ['1881', '1885', '1891', '1901'],
+    ans: 1,
+    exp: 'Georgia Tech was founded on October 13, 1885 as the Georgia School of Technology in Atlanta.'
+  },
+  {
+    id: 'demo_2', mod: 0, mod_name: 'Georgia Tech Trivia', type: 'MCQ',
+    q: "What is Georgia Tech's costumed mascot called?",
+    opts: ["Ramblin' Wreck", 'Buzz', 'Sting', 'Yellowjacket Jack'],
+    ans: 1,
+    exp: "Buzz the Yellow Jacket is Georgia Tech's costumed mascot. The Ramblin' Wreck is the famous 1930 Ford Model A Sport Coupe — the official school vehicle."
+  },
+  {
+    id: 'demo_3', mod: 0, mod_name: 'Georgia Tech Trivia', type: 'MCQ',
+    q: "Georgia Tech's OMSCS program launched in 2014 in partnership with which company?",
+    opts: ['Coursera', 'edX', 'Udacity', 'LinkedIn Learning'],
+    ans: 2,
+    exp: "Georgia Tech partnered with Udacity and AT&T to launch the Online Master of Science in Computer Science (OMSCS), making it one of the first affordable, fully online CS master's degrees at scale."
+  },
+  {
+    id: 'demo_4', mod: 0, mod_name: 'Georgia Tech Trivia', type: 'MCQ',
+    q: 'What is the nickname for the annual football rivalry between Georgia Tech and the University of Georgia?',
+    opts: ['The Battle of Atlanta', 'Clean, Old-Fashioned Hate', 'The Southern Showdown', 'The Peach State Classic'],
+    ans: 1,
+    exp: '"Clean, Old-Fashioned Hate" is the beloved nickname for the Georgia–Georgia Tech rivalry, one of the oldest in college football.'
+  },
+  {
+    id: 'demo_5', mod: 0, mod_name: 'Georgia Tech Trivia', type: 'MCQ',
+    q: "In what Atlanta neighborhood is Georgia Tech's main campus located?",
+    opts: ['Buckhead', 'Downtown', 'Midtown', 'Virginia-Highland'],
+    ans: 2,
+    exp: "Georgia Tech's campus sits in Midtown Atlanta, adjacent to Piedmont Park and the Atlanta BeltLine."
+  }
+];
+
+// ── State ──────────────────────────────────────────────────────────────────
 let allQuestions   = [];
 let allModules     = [];
 let selectedMods   = new Set();
@@ -21,7 +61,7 @@ let sessionByMod = {};
 let answered     = false;
 let currentQ     = null;
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────
 const $  = (s, ctx = document) => ctx.querySelector(s);
 const $$ = (s, ctx = document) => [...ctx.querySelectorAll(s)];
 
@@ -29,6 +69,14 @@ function shuffle(arr) {
   return arr.map(v => ({ v, s: Math.random() }))
             .sort((a, b) => a.s - b.s)
             .map(x => x.v);
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 async function api(action, method = 'GET', body = null) {
@@ -49,40 +97,87 @@ function setView(v) {
   if (v === 'stats') loadStats();
 }
 
-// ── File loading ───────────────────────────────────────────────────────────
-function initFileInput() {
-  const input = $('#file-input');
+// ── Modal system ───────────────────────────────────────────────────────────
+function openModal(type) {
+  const overlay = $('#modal-overlay');
+  overlay.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+
+  const titles = { upload: 'Upload deck', create: 'Create deck', demo: 'Demo' };
+  $('#modal-title').textContent = titles[type] || '';
+
+  if (type === 'upload')      renderUploadModal();
+  else if (type === 'create') renderCreateModal();
+  else if (type === 'demo')   renderDemoModal();
+}
+
+function closeModal() {
+  $('#modal-overlay').classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+function handleOverlayClick(e) {
+  if (e.target.id === 'modal-overlay') closeModal();
+}
+
+// ── Upload modal ───────────────────────────────────────────────────────────
+function renderUploadModal() {
+  // If questions already loaded, skip straight to module selector
+  if (allQuestions.length > 0) {
+    renderModalModuleSelector();
+    return;
+  }
+
+  const content = $('#modal-content');
+  content.innerHTML = `
+    <div id="drop-zone">
+      <div class="dz-icon">📂</div>
+      <div class="dz-title">Drop your questions.json here</div>
+      <div class="dz-sub">or click to browse your computer</div>
+      <input type="file" id="modal-file-input" accept=".json,application/json" style="display:none">
+      <button class="btn btn-primary btn-sm" onclick="$('#modal-file-input').click()">Choose file</button>
+      <p id="modal-file-error" style="color:var(--red);font-size:12px;margin-top:10px;display:none;text-align:center"></p>
+    </div>
+    <p style="font-size:11px;color:var(--text-3);text-align:center;margin-top:10px">
+      Read locally in your browser — nothing is uploaded to the server.
+    </p>`;
+
+  const dz    = $('#drop-zone');
+  const input = $('#modal-file-input');
+
+  dz.addEventListener('click', e => { if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') input.click(); });
+  dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) readJsonFile(file);
+  });
   input.addEventListener('change', () => {
-    const file = input.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload  = e => parseQuestions(e.target.result, file.name);
-    reader.onerror = () => showFileError('Could not read file.');
-    reader.readAsText(file);
+    if (input.files[0]) readJsonFile(input.files[0]);
     input.value = '';
   });
+}
 
-  $('#change-file-btn').addEventListener('click', () => {
-    allQuestions = [];
-    allModules   = [];
-    selectedMods = new Set();
-    try { localStorage.removeItem(LS_KEY); } catch {}
-    $('#module-selector').style.display = 'none';
-    $('#file-loader').style.display = '';
-  });
+function readJsonFile(file) {
+  const reader = new FileReader();
+  reader.onload  = e => parseQuestions(e.target.result, file.name);
+  reader.onerror = () => showModalError('Could not read file.');
+  reader.readAsText(file);
 }
 
 function parseQuestions(text, filename) {
   let data;
   try { data = JSON.parse(text); }
-  catch { showFileError('Invalid JSON — could not parse the file.'); return; }
+  catch { showModalError('Invalid JSON — could not parse the file.'); return; }
 
   if (!Array.isArray(data) || !data.length) {
-    showFileError('File must be a non-empty JSON array.'); return;
+    showModalError('File must be a non-empty JSON array.'); return;
   }
   const s = data[0];
   if (!s.id || !s.q || !Array.isArray(s.opts) || s.ans === undefined) {
-    showFileError('Questions need id, q, opts (array), and ans fields.'); return;
+    showModalError('Questions must have id, q, opts (array), and ans fields.'); return;
   }
 
   try { localStorage.setItem(LS_KEY, JSON.stringify({ filename, questions: data })); }
@@ -102,23 +197,60 @@ function applyQuestions(data, filename) {
   });
   allModules = Object.values(modMap).sort((a, b) => a.id - b.id);
 
-  hideFileError();
-  $('#file-loader').style.display = 'none';
-  $('#module-selector').style.display = '';
-  $('#file-loaded-name').textContent  = loadedFileName;
-  $('#file-loaded-count').textContent = `· ${allQuestions.length} questions`;
+  updateUploadCard();
+
+  // If the modal is open, transition to module selector
+  if (!$('#modal-overlay').classList.contains('hidden')) {
+    renderModalModuleSelector();
+  }
+}
+
+function updateUploadCard() {
+  const sub = $('#upload-sub');
+  if (!sub) return;
+  if (allQuestions.length > 0) {
+    sub.innerHTML = `<span style="color:var(--green-mid)">${loadedFileName} · ${allQuestions.length} questions</span>`;
+  } else {
+    sub.textContent = 'Load a questions.json file';
+  }
+}
+
+function showModalError(msg) {
+  const el = $('#modal-file-error');
+  if (el) { el.textContent = msg; el.style.display = ''; }
+}
+
+function renderModalModuleSelector() {
+  const content = $('#modal-content');
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div>
+        <span style="font-size:14px;font-weight:500;color:var(--text)">${escapeHtml(loadedFileName)}</span>
+        <span style="font-size:13px;color:var(--text-3);margin-left:6px">· ${allQuestions.length} questions</span>
+      </div>
+      <button class="btn btn-sm" onclick="clearQuestions()">Change file</button>
+    </div>
+    <p style="font-size:13px;color:var(--text-3);margin-bottom:14px">Pick modules to study. Questions are randomized every session.</p>
+    <div class="mod-grid" id="mod-grid"></div>
+    <button id="start-btn" class="btn btn-primary btn-block mt-1" onclick="modalStartQuiz()" disabled>Start →</button>`;
+
   renderModuleGrid();
-  selectAll(); // default: all modules selected, ready to start immediately
+  selectAll();
 }
 
-function showFileError(msg) {
-  const el = $('#file-error');
-  el.textContent = msg;
-  el.style.display = '';
+function clearQuestions() {
+  allQuestions   = [];
+  allModules     = [];
+  selectedMods   = new Set();
+  loadedFileName = '';
+  try { localStorage.removeItem(LS_KEY); } catch {}
+  updateUploadCard();
+  renderUploadModal();
 }
 
-function hideFileError() {
-  $('#file-error').style.display = 'none';
+function modalStartQuiz() {
+  closeModal();
+  startQuiz();
 }
 
 // ── Module selector ────────────────────────────────────────────────────────
@@ -131,7 +263,7 @@ function renderModuleGrid() {
     btn.className = 'mod-card';
     btn.dataset.modId = m.id;
     btn.innerHTML = `<div class="mod-num">Module ${m.id}</div>
-                     <div class="mod-name">${m.name}</div>
+                     <div class="mod-name">${escapeHtml(m.name)}</div>
                      <div class="mod-cnt">${m.count} questions</div>`;
     btn.addEventListener('click', () => toggleMod(m.id, btn));
     grid.appendChild(btn);
@@ -167,6 +299,171 @@ function selectAll() {
 function updateStartBtn() {
   const btn = $('#start-btn');
   if (btn) btn.disabled = selectedMods.size === 0;
+}
+
+// ── Create modal ───────────────────────────────────────────────────────────
+function getCreatedDeck() {
+  try { return JSON.parse(localStorage.getItem(CREATE_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function saveCreatedDeck(deck) {
+  try { localStorage.setItem(CREATE_KEY, JSON.stringify(deck)); } catch {}
+  updateCreateCard();
+}
+
+function updateCreateCard() {
+  const sub = $('#create-sub');
+  if (!sub) return;
+  const deck = getCreatedDeck();
+  sub.textContent = deck.length > 0
+    ? `${deck.length} card${deck.length !== 1 ? 's' : ''} saved`
+    : 'Build your own deck';
+}
+
+function renderCreateModal() {
+  const createdDeck = getCreatedDeck();
+  const hasCards    = createdDeck.length > 0;
+
+  $('#modal-content').innerHTML = `
+    <div class="create-form">
+      <div class="form-group">
+        <label>Question</label>
+        <textarea id="create-q" rows="3" placeholder="Type your question here…"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Options</label>
+        <div class="create-opts-grid">
+          <input id="opt-0" placeholder="Option 1" />
+          <input id="opt-1" placeholder="Option 2" />
+          <input id="opt-2" placeholder="Option 3" />
+          <input id="opt-3" placeholder="Option 4" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Correct answer</label>
+        <select id="create-correct">
+          <option value="0">Option 1</option>
+          <option value="1">Option 2</option>
+          <option value="2">Option 3</option>
+          <option value="3">Option 4</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Explanation <span class="form-optional">(optional)</span></label>
+        <textarea id="create-exp" rows="2" placeholder="Explain the correct answer…"></textarea>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="addCreateCard()">+ Add question</button>
+      <p id="create-add-error" style="color:var(--red);font-size:12px;margin-top:6px;display:none"></p>
+    </div>
+
+    ${hasCards ? `
+    <div style="margin-top:18px">
+      <div class="section-label">Deck · ${createdDeck.length} question${createdDeck.length !== 1 ? 's' : ''}</div>
+      <div class="create-card-list">
+        ${createdDeck.map((q, i) => createCardItemHTML(q, i)).join('')}
+      </div>
+    </div>
+    <div class="create-footer">
+      <button class="btn" onclick="exportCreatedDeck()">⬇ Export JSON</button>
+      <button class="btn btn-primary" onclick="studyCreatedDeck()">Study these →</button>
+    </div>
+    ` : ''}`;
+}
+
+function createCardItemHTML(q, i) {
+  return `<div class="create-card-item">
+    <div class="create-card-num">${i + 1}</div>
+    <div class="create-card-body">
+      <div class="create-card-q">${escapeHtml(q.q)}</div>
+      <div class="create-card-ans">✓ ${escapeHtml(q.opts[q.ans])}</div>
+    </div>
+    <button class="create-card-del" onclick="deleteCreateCard(${i})" title="Delete">✕</button>
+  </div>`;
+}
+
+function addCreateCard() {
+  const qText = ($('#create-q').value || '').trim();
+  const opts  = [
+    ($('#opt-0').value || '').trim(),
+    ($('#opt-1').value || '').trim(),
+    ($('#opt-2').value || '').trim(),
+    ($('#opt-3').value || '').trim(),
+  ];
+  const ans   = parseInt($('#create-correct').value);
+  const exp   = ($('#create-exp').value || '').trim();
+  const errEl = $('#create-add-error');
+
+  if (!qText)        { errEl.textContent = 'Please enter a question.'; errEl.style.display = ''; return; }
+  if (!opts[0])      { errEl.textContent = 'Please fill in Option 1.'; errEl.style.display = ''; return; }
+  if (!opts[1])      { errEl.textContent = 'Please fill in Option 2.'; errEl.style.display = ''; return; }
+  if (!opts[2])      { errEl.textContent = 'Please fill in Option 3.'; errEl.style.display = ''; return; }
+  if (!opts[3])      { errEl.textContent = 'Please fill in Option 4.'; errEl.style.display = ''; return; }
+  errEl.style.display = 'none';
+
+  const deck = getCreatedDeck();
+  deck.push({
+    id:       `created_${Date.now()}`,
+    mod:      1,
+    mod_name: 'My Deck',
+    type:     'MCQ',
+    q:        qText,
+    opts,
+    ans,
+    exp,
+  });
+  saveCreatedDeck(deck);
+  renderCreateModal(); // re-render to show new card in list
+}
+
+function deleteCreateCard(idx) {
+  const deck = getCreatedDeck();
+  deck.splice(idx, 1);
+  saveCreatedDeck(deck);
+  renderCreateModal();
+}
+
+function exportCreatedDeck() {
+  const deck = getCreatedDeck();
+  if (!deck.length) return;
+  const blob = new Blob([JSON.stringify(deck, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'my-deck.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function studyCreatedDeck() {
+  const deck = getCreatedDeck();
+  if (!deck.length) return;
+  allQuestions   = deck;
+  allModules     = [{ id: 1, name: 'My Deck', count: deck.length }];
+  selectedMods   = new Set([1]);
+  loadedFileName = 'my-deck.json';
+  closeModal();
+  startQuiz();
+}
+
+// ── Demo modal ─────────────────────────────────────────────────────────────
+function renderDemoModal() {
+  $('#modal-content').innerHTML = `
+    <div style="text-align:center;padding:1.5rem 0 0.5rem">
+      <div style="font-size:44px;margin-bottom:14px">🐝</div>
+      <div style="font-size:17px;font-weight:600;color:var(--text);margin-bottom:6px">Georgia Tech Trivia</div>
+      <div style="font-size:13px;color:var(--text-3);margin-bottom:28px">5 questions about Georgia Tech history &amp; culture</div>
+      <button class="btn btn-primary" style="padding:10px 28px;font-size:15px" onclick="startDemo()">Start demo →</button>
+    </div>`;
+}
+
+function startDemo() {
+  allQuestions   = DEMO_QUESTIONS;
+  allModules     = [{ id: 0, name: 'Georgia Tech Trivia', count: DEMO_QUESTIONS.length }];
+  selectedMods   = new Set([0]);
+  loadedFileName = 'demo';
+  closeModal();
+  startQuiz();
 }
 
 // ── Quiz start ─────────────────────────────────────────────────────────────
@@ -230,22 +527,20 @@ function renderQuestion() {
   opts.innerHTML = '';
   currentQ.opts.forEach((o, i) => {
     const btn = document.createElement('button');
-    btn.className = 'opt';
-    btn.dataset.i = i;
-    // Keyboard label: 1-4 for MCQ, T/F for true-false
-    const lbl = isTF ? (i === 0 ? 'T' : 'F') : (i + 1);
-    btn.innerHTML = `<span class="opt-ltr">${lbl}</span><span>${o}</span>`;
+    btn.className  = 'opt';
+    btn.dataset.i  = i;
+    const lbl      = isTF ? (i === 0 ? 'T' : 'F') : (i + 1);
+    btn.innerHTML  = `<span class="opt-ltr">${lbl}</span><span>${escapeHtml(o)}</span>`;
     btn.addEventListener('click', () => pickAnswer(i));
     opts.appendChild(btn);
   });
 
   const fb = $('#q-fb');
-  fb.className = 'fb';
+  fb.className     = 'fb';
   fb.style.display = 'none';
-  fb.innerHTML = '';
+  fb.innerHTML     = '';
   $('#btn-next').classList.add('hidden');
 
-  // Keyboard hint
   $('#kbd-hint').innerHTML = isTF
     ? 'Press <kbd>T</kbd> True &nbsp;·&nbsp; <kbd>F</kbd> False'
     : 'Press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> to answer';
@@ -254,7 +549,7 @@ function renderQuestion() {
     ? `Session: ${sessionRight} / ${sessionTotal} correct` : '';
 }
 
-// ── Answer ────────────────────────────────────────────────────────────────
+// ── Answer ─────────────────────────────────────────────────────────────────
 async function pickAnswer(chosen) {
   if (answered) return;
   answered = true;
@@ -264,7 +559,7 @@ async function pickAnswer(chosen) {
   $$('.opt').forEach(b => b.disabled = true);
   $$('.opt').forEach(btn => {
     const i = parseInt(btn.dataset.i);
-    if (i === currentQ.ans)           btn.classList.add('correct');
+    if (i === currentQ.ans)            btn.classList.add('correct');
     else if (i === chosen && !correct) btn.classList.add('wrong');
   });
 
@@ -275,9 +570,8 @@ async function pickAnswer(chosen) {
   sessionByMod[currentQ.mod].total++;
   if (correct) sessionByMod[currentQ.mod].right++;
 
-  // Always show explanation — correct or wrong
   const expHtml = currentQ.exp
-    ? `<div class="fb-explain">${currentQ.exp}</div>` : '';
+    ? `<div class="fb-explain">${escapeHtml(currentQ.exp)}</div>` : '';
 
   const fb = $('#q-fb');
   if (correct) {
@@ -285,7 +579,7 @@ async function pickAnswer(chosen) {
     fb.innerHTML = `<div class="fb-label">Correct!</div>${expHtml}`;
   } else {
     fb.className = 'fb bad';
-    fb.innerHTML = `<div class="fb-label">Not quite — correct: <strong>${currentQ.opts[currentQ.ans]}</strong></div>${expHtml}`;
+    fb.innerHTML = `<div class="fb-label">Not quite — correct: <strong>${escapeHtml(currentQ.opts[currentQ.ans])}</strong></div>${expHtml}`;
   }
   fb.style.display = 'block';
   $('#btn-next').classList.remove('hidden');
@@ -305,6 +599,7 @@ async function pickAnswer(chosen) {
 // ── Keyboard shortcuts ─────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (!$('#modal-overlay').classList.contains('hidden')) return; // modal open
   if ($('#page-quiz').classList.contains('hidden') || !currentQ) return;
 
   const isTF = currentQ.type === 'T/F';
@@ -359,7 +654,7 @@ function showResults() {
   const modRows = Object.entries(sessionByMod)
     .map(([id, m]) => `
       <div class="mod-row">
-        <span class="mod-row-name">M${id}: ${m.name || ''}</span>
+        <span class="mod-row-name">M${id}: ${escapeHtml(m.name || '')}</span>
         <span class="mod-row-score">${m.right}/${m.total}</span>
       </div>`).join('');
 
@@ -449,10 +744,10 @@ async function loadStats() {
   const weakRows = weak.length === 0
     ? `<div class="text-muted" style="padding:0.75rem 0">Answer ≥ 2 questions to see your weak spots.</div>`
     : weak.map(w => {
-        const q = allQuestions.find(x => x.id === w.question_id);
+        const q     = allQuestions.find(x => x.id === w.question_id);
         const qtext = q ? q.q : `Question ${w.question_id}`;
         return `<div class="weak-item">
-          <div class="weak-q">${qtext}</div>
+          <div class="weak-q">${escapeHtml(qtext)}</div>
           <div class="weak-meta">
             <span>Module ${w.module_id}</span>
             <span>${w.wrong_count} wrong / ${w.total_attempts} attempts</span>
@@ -483,26 +778,35 @@ async function loadStats() {
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // Nav buttons
   $$('nav button[data-view]').forEach(btn => {
     btn.addEventListener('click', () => setView(btn.dataset.view));
   });
 
-  $('#start-btn').addEventListener('click', startQuiz);
-  initFileInput();
+  // Escape key closes modal
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeModal();
+  });
 
-  // Restore from localStorage if available
+  // Restore question cache from localStorage — just update card display, don't open modal
   try {
     const cached = localStorage.getItem(LS_KEY);
     if (cached) {
       const { filename, questions } = JSON.parse(cached);
       if (Array.isArray(questions) && questions.length > 0) {
-        applyQuestions(questions, filename);
-        return;
+        allQuestions   = questions;
+        loadedFileName = filename || 'questions.json';
+        const modMap   = {};
+        questions.forEach(q => {
+          if (!modMap[q.mod]) modMap[q.mod] = { id: q.mod, name: q.mod_name || `Module ${q.mod}`, count: 0 };
+          modMap[q.mod].count++;
+        });
+        allModules = Object.values(modMap).sort((a, b) => a.id - b.id);
+        updateUploadCard();
       }
     }
   } catch {}
 
-  // No cache — show file loader
-  $('#file-loader').style.display = '';
-  $('#module-selector').style.display = 'none';
+  // Update create card state
+  updateCreateCard();
 });

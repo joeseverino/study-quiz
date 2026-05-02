@@ -11,7 +11,7 @@ if (!file_exists($db_path)) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CS6250 · Study Quiz</title>
-  <link rel="stylesheet" href="assets/css/style.css?v=7">
+  <link rel="stylesheet" href="assets/css/style.css?v=8">
 </head>
 <body>
 
@@ -135,6 +135,7 @@ if (!file_exists($db_path)) {
 
       </div><!-- /.mode-grid -->
       </div><!-- /.home-content -->
+      <a class="home-footer-link" href="https://jseverino.com" target="_blank" rel="noopener noreferrer">Visit jseverino.com →</a>
     </div>
 
     <!-- ── Quiz ───────────────────────────────────────────────────────────── -->
@@ -160,6 +161,6 @@ if (!file_exists($db_path)) {
   </div>
 </div>
 
-<script src="assets/js/quiz.js?v=7"></script>
+<script src="assets/js/quiz.js?v=8"></script>
 </body>
 </html>

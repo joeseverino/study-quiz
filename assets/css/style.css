@@ -48,13 +48,14 @@
   }
 }
 
-html { font-size: 16px; }
+html { font-size: 16px; overflow-x: hidden; }
 body {
   font-family: var(--font);
   background: var(--bg);
   color: var(--text);
   line-height: 1.6;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 /* ── Fixed background canvas ─────────────────────────────────────────────── */
@@ -516,6 +517,7 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 
 @media (max-width: 480px) {
   main { padding: 1rem 0.75rem; }
+  #page-home { margin: -1rem -0.75rem; padding: 1rem 0.75rem; }
   .mod-grid { grid-template-columns: 1fr 1fr; }
   .q-text { font-size: 15px; }
   header { padding: 0 1rem; }
@@ -523,7 +525,8 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 
 /* ── Home page layout ─────────────────────────────────────────────────── */
 #page-home {
-  min-height: calc(100vh - 52px);
+  height: calc(100vh - 52px);
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -544,6 +547,22 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   position: relative;
   z-index: 1;
 }
+
+/* ── Home footer link ─────────────────────────────────────────────────── */
+.home-footer-link {
+  position: absolute;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  color: var(--text-3);
+  text-decoration: none;
+  white-space: nowrap;
+  letter-spacing: .01em;
+  transition: color .15s;
+  z-index: 1;
+}
+.home-footer-link:hover { color: var(--text-2); }
 
 /* ── Resume banner ────────────────────────────────────────────────────── */
 #resume-card {

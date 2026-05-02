@@ -57,11 +57,42 @@ body {
   min-height: 100vh;
 }
 
+/* ── Fixed background canvas ─────────────────────────────────────────────── */
+.bg-blobs {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.bg-blobs::before,
+.bg-blobs::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+}
+.bg-blobs::before {
+  width: 520px; height: 520px;
+  background: radial-gradient(circle, rgba(29,158,117,.22) 0%, transparent 68%);
+  top: -200px; left: -200px;
+}
+.bg-blobs::after {
+  width: 440px; height: 440px;
+  background: radial-gradient(circle, rgba(24,95,165,.18) 0%, transparent 68%);
+  bottom: -180px; right: -160px;
+}
+@media (prefers-color-scheme: dark) {
+  .bg-blobs::before { background: radial-gradient(circle, rgba(29,158,117,.18) 0%, transparent 68%); }
+  .bg-blobs::after  { background: radial-gradient(circle, rgba(24,95,165,.15) 0%, transparent 68%); }
+}
+
 /* ── Layout ───────────────────────────────────────────────────────────── */
 .app-shell {
   display: grid;
   grid-template-rows: auto 1fr;
   min-height: 100vh;
+  position: relative;
+  z-index: 1;
 }
 
 header {
@@ -88,6 +119,8 @@ header {
 }
 .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green-mid); }
 
+.header-right { display: flex; align-items: center; gap: 4px; }
+
 nav { display: flex; gap: 4px; }
 nav button {
   background: none;
@@ -101,6 +134,70 @@ nav button {
 }
 nav button:hover { background: var(--surface2); color: var(--text); }
 nav button.active { background: var(--surface2); color: var(--text); font-weight: 500; }
+
+/* ── Header menu ──────────────────────────────────────────────────────────── */
+.menu-wrap { position: relative; }
+
+.menu-btn {
+  width: 32px; height: 32px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  border: none;
+  color: var(--text-3);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.menu-btn:hover { background: var(--surface2); color: var(--text); }
+.menu-btn.open  { background: var(--surface2); color: var(--text); }
+
+.menu-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--surface);
+  border: 0.5px solid var(--border-med);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0,0,0,.12), 0 2px 6px rgba(0,0,0,.06);
+  min-width: 188px;
+  padding: 4px;
+  z-index: 50;
+}
+.menu-dropdown.hidden { display: none !important; }
+
+.menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.menu-item:hover:not(:disabled) { background: var(--surface2); color: var(--text); }
+.menu-item:disabled { opacity: .38; cursor: not-allowed; }
+.menu-item-danger { color: var(--red) !important; }
+.menu-item-danger:hover:not(:disabled) { background: var(--red-bg) !important; color: var(--red) !important; }
+
+.menu-divider { height: 0.5px; background: var(--border); margin: 4px 0; }
+
+.menu-reset-confirm {
+  padding: 8px 10px 6px;
+  border-radius: 6px;
+  background: var(--surface2);
+  margin-top: 2px;
+}
+.menu-reset-confirm p { font-size: 12px; color: var(--text-2); margin-bottom: 8px; }
+.menu-confirm-btns { display: flex; gap: 6px; }
+.menu-confirm-btns .btn { flex: 1; font-size: 12px; padding: 5px 10px; }
+.menu-confirm-btns .btn:first-child { color: var(--red); border-color: currentColor; }
 
 main { padding: 2rem 1rem; max-width: 680px; margin: 0 auto; width: 100%; }
 
@@ -431,30 +528,9 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   align-items: center;
   justify-content: center;
   position: relative;
-  overflow: hidden;
-  /* escape main's padding so blobs go edge-to-edge */
+  /* escape main's padding so cards go edge-to-edge */
   margin: -2rem -1rem;
   padding: 2rem;
-}
-
-/* Decorative blobs that give the glass something to blur against */
-#page-home::before,
-#page-home::after {
-  content: '';
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 0;
-}
-#page-home::before {
-  width: 520px; height: 520px;
-  background: radial-gradient(circle, rgba(29,158,117,.22) 0%, transparent 68%);
-  top: -200px; left: -200px;
-}
-#page-home::after {
-  width: 440px; height: 440px;
-  background: radial-gradient(circle, rgba(24,95,165,.18) 0%, transparent 68%);
-  bottom: -180px; right: -160px;
 }
 
 /* ── Mode grid ────────────────────────────────────────────────────────── */
@@ -510,8 +586,6 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 }
 
 @media (prefers-color-scheme: dark) {
-  #page-home::before { background: radial-gradient(circle, rgba(29,158,117,.18) 0%, transparent 68%); }
-  #page-home::after  { background: radial-gradient(circle, rgba(24,95,165,.15) 0%, transparent 68%); }
   .mode-card {
     background: rgba(36, 36, 32, 0.72);
     border-color: rgba(255, 255, 255, .10);
@@ -553,6 +627,26 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   color: var(--text-3);
   line-height: 1.45;
   max-width: 120px;
+}
+
+/* ── Upload card — dashed drop-target style ───────────────────────────── */
+#card-upload {
+  border-style: dashed !important;
+}
+#card-upload.drag-over {
+  border-color: var(--green-mid) !important;
+  border-width: 2px !important;
+  background: rgba(29, 158, 117, 0.06) !important;
+  transform: translateY(-5px) scale(1.025);
+  box-shadow:
+    0 20px 56px rgba(29, 158, 117, .15),
+    0 6px 16px rgba(0, 0, 0, .06),
+    inset 0 1.5px 0 rgba(255, 255, 255, .95) !important;
+}
+@media (prefers-color-scheme: dark) {
+  #card-upload.drag-over {
+    background: rgba(29, 158, 117, 0.10) !important;
+  }
 }
 
 @media (max-width: 520px) {
@@ -734,17 +828,20 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   text-overflow: ellipsis;
 }
 .create-card-ans { font-size: 12px; color: var(--green-mid); }
-.create-card-del {
+.create-card-del,
+.create-card-edit {
   background: none;
   border: none;
-  padding: 2px 4px;
-  color: var(--text-3);
+  padding: 2px 5px;
   font-size: 13px;
   cursor: pointer;
   flex-shrink: 0;
   border-radius: 4px;
+  color: var(--text-3);
+  display: flex; align-items: center; justify-content: center;
 }
-.create-card-del:hover { color: var(--red); background: var(--red-bg); }
+.create-card-del:hover  { color: var(--red);  background: var(--red-bg);  }
+.create-card-edit:hover { color: var(--blue); background: var(--blue-bg); }
 
 /* Create footer */
 .create-footer {

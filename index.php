@@ -11,9 +11,11 @@ if (!file_exists($db_path)) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CS6250 · Study Quiz</title>
-  <link rel="stylesheet" href="assets/css/style.css?v=3">
+  <link rel="stylesheet" href="assets/css/style.css?v=5">
 </head>
 <body>
+
+<div class="bg-blobs" aria-hidden="true"></div>
 
 <div class="app-shell">
 
@@ -22,10 +24,45 @@ if (!file_exists($db_path)) {
       <span class="logo-dot"></span>
       CS6250 · Study Quiz
     </a>
-    <nav>
-      <button data-view="home" class="active">Quiz</button>
-      <button data-view="stats">Stats</button>
-    </nav>
+    <div class="header-right">
+      <nav>
+        <button data-view="home" class="active">Quiz</button>
+        <button data-view="stats">Stats</button>
+      </nav>
+      <div class="menu-wrap" id="menu-wrap">
+        <button class="menu-btn" id="menu-btn" onclick="toggleMenu(event)" aria-label="Menu">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+          </svg>
+        </button>
+        <div class="menu-dropdown hidden" id="menu-dropdown">
+          <button class="menu-item" id="mi-edit" onclick="menuEdit()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Edit cards
+          </button>
+          <button class="menu-item" id="mi-export" onclick="menuExport()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export deck
+          </button>
+          <div class="menu-divider"></div>
+          <button class="menu-item" id="mi-clear" onclick="menuClear()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            Clear deck
+          </button>
+          <button class="menu-item menu-item-danger" id="mi-reset" onclick="menuResetConfirm()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            Reset stats
+          </button>
+          <div class="menu-reset-confirm hidden" id="mi-reset-confirm">
+            <p>Reset all session stats?</p>
+            <div class="menu-confirm-btns">
+              <button class="btn btn-sm" onclick="menuResetGo()">Yes, reset</button>
+              <button class="btn btn-sm" onclick="menuResetCancel()">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </header>
 
   <main>
@@ -35,7 +72,7 @@ if (!file_exists($db_path)) {
       <div class="mode-grid">
 
         <!-- Upload -->
-        <div class="mode-card" role="button" tabindex="0"
+        <div id="card-upload" class="mode-card" role="button" tabindex="0"
              onclick="openModal('upload')"
              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openModal('upload')}">
           <div class="mode-icon-wrap">
@@ -103,6 +140,6 @@ if (!file_exists($db_path)) {
   </div>
 </div>
 
-<script src="assets/js/quiz.js?v=3"></script>
+<script src="assets/js/quiz.js?v=5"></script>
 </body>
 </html>

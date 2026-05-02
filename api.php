@@ -134,4 +134,13 @@ if ($action === 'stats') {
     ]);
 }
 
+// ── POST /api.php?action=reset_stats ─────────────────────────────────────
+if ($action === 'reset_stats' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $db = db();
+    $db->exec("DELETE FROM answers");
+    $db->exec("DELETE FROM sessions");
+    $db->exec("DELETE FROM question_stats");
+    respond(['ok' => true]);
+}
+
 error('Unknown action.', 404);

@@ -61,6 +61,10 @@ let sessionByMod = {};
 let answered     = false;
 let currentQ     = null;
 
+// Edit modal state
+let editView    = 'list'; // 'list' | 'edit' | 'new'
+let editCardIdx = null;
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 const $  = (s, ctx = document) => ctx.querySelector(s);
 const $$ = (s, ctx = document) => [...ctx.querySelectorAll(s)];
@@ -103,12 +107,13 @@ function openModal(type) {
   overlay.classList.remove('hidden');
   document.body.style.overflow = 'hidden';
 
-  const titles = { upload: 'Upload deck', create: 'Create deck', demo: 'Demo' };
+  const titles = { upload: 'Upload deck', create: 'Create deck', demo: 'Demo', edit: 'Edit deck' };
   $('#modal-title').textContent = titles[type] || '';
 
   if (type === 'upload')      renderUploadModal();
   else if (type === 'create') renderCreateModal();
   else if (type === 'demo')   renderDemoModal();
+  else if (type === 'edit')   renderEditModal();
 }
 
 function closeModal() {
@@ -220,6 +225,20 @@ function showModalError(msg) {
   if (el) { el.textContent = msg; el.style.display = ''; }
 }
 
+function exportLoadedDeck() {
+  if (!allQuestions.length) return;
+  const blob = new Blob([JSON.stringify(allQuestions, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  let name   = loadedFileName || 'questions.json';
+  if (name === 'demo') name = 'my-deck.json';
+  if (!name.endsWith('.json')) name += '.json';
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function renderModalModuleSelector() {
   const content = $('#modal-content');
   content.innerHTML = `
@@ -228,7 +247,10 @@ function renderModalModuleSelector() {
         <span style="font-size:14px;font-weight:500;color:var(--text)">${escapeHtml(loadedFileName)}</span>
         <span style="font-size:13px;color:var(--text-3);margin-left:6px">· ${allQuestions.length} questions</span>
       </div>
-      <button class="btn btn-sm" onclick="clearQuestions()">Change file</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="exportLoadedDeck()" title="Download as JSON">↓ Export</button>
+        <button class="btn btn-sm" onclick="clearQuestions()">Change file</button>
+      </div>
     </div>
     <p style="font-size:13px;color:var(--text-3);margin-bottom:14px">Pick modules to study. Questions are randomized every session.</p>
     <div class="mod-grid" id="mod-grid"></div>
@@ -464,6 +486,213 @@ function startDemo() {
   loadedFileName = 'demo';
   closeModal();
   startQuiz();
+}
+
+// ── Header menu ────────────────────────────────────────────────────────────
+function toggleMenu(e) {
+  e.stopPropagation();
+  const dropdown = document.getElementById('menu-dropdown');
+  const isOpen   = !dropdown.classList.contains('hidden');
+  if (isOpen) { closeMenu(); return; }
+  menuResetCancel(); // reset any leftover confirm state
+  updateMenuStates();
+  dropdown.classList.remove('hidden');
+  document.getElementById('menu-btn').classList.add('open');
+}
+
+function closeMenu() {
+  document.getElementById('menu-dropdown')?.classList.add('hidden');
+  document.getElementById('menu-btn')?.classList.remove('open');
+}
+
+function updateMenuStates() {
+  const has = allQuestions.length > 0;
+  ['mi-edit', 'mi-export', 'mi-clear'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !has;
+  });
+}
+
+function menuEdit()   { closeMenu(); openEditModal(); }
+function menuExport() { closeMenu(); exportLoadedDeck(); }
+function menuClear()  { closeMenu(); clearQuestions(); }
+
+function menuResetConfirm() {
+  document.getElementById('mi-reset').classList.add('hidden');
+  document.getElementById('mi-reset-confirm').classList.remove('hidden');
+}
+function menuResetCancel() {
+  document.getElementById('mi-reset')?.classList.remove('hidden');
+  document.getElementById('mi-reset-confirm')?.classList.add('hidden');
+}
+async function menuResetGo() {
+  closeMenu();
+  menuResetCancel();
+  await api('reset_stats', 'POST');
+  if (!$('#page-stats').classList.contains('hidden')) loadStats();
+}
+
+// ── Edit modal ──────────────────────────────────────────────────────────────
+function openEditModal() {
+  // Deep-copy so we never mutate DEMO_QUESTIONS or stale references
+  allQuestions = JSON.parse(JSON.stringify(allQuestions));
+  editView     = 'list';
+  editCardIdx  = null;
+  openModal('edit');
+}
+
+function renderEditModal() {
+  if      (editView === 'list') renderEditList();
+  else if (editView === 'edit') renderEditForm();
+  else if (editView === 'new')  renderNewCardForm();
+}
+
+function renderEditList() {
+  $('#modal-title').textContent = `Edit deck · ${allQuestions.length} card${allQuestions.length !== 1 ? 's' : ''}`;
+  const cards = allQuestions.map((q, i) => `
+    <div class="create-card-item">
+      <div class="create-card-num">${i + 1}</div>
+      <div class="create-card-body">
+        <div class="create-card-q">${escapeHtml(q.q)}</div>
+        <div class="create-card-ans">✓ ${escapeHtml(q.opts[q.ans])}</div>
+      </div>
+      <button class="create-card-edit" onclick="goEditCard(${i})" title="Edit">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </button>
+      <button class="create-card-del" onclick="deleteEditCard(${i})" title="Delete">✕</button>
+    </div>`).join('');
+
+  $('#modal-content').innerHTML = `
+    ${allQuestions.length > 0
+      ? `<div class="create-card-list">${cards}</div>`
+      : `<div class="empty-state" style="padding:2rem 0"><h3>No cards</h3><p>Add some cards below.</p></div>`}
+    <div class="create-footer" style="margin-top:12px">
+      <button class="btn" onclick="goNewCard()">+ Add card</button>
+      <button class="btn btn-primary" onclick="exportLoadedDeck()">↓ Export JSON</button>
+    </div>`;
+}
+
+function renderEditForm() {
+  const q = allQuestions[editCardIdx];
+  $('#modal-title').textContent = `Edit card ${editCardIdx + 1} of ${allQuestions.length}`;
+  $('#modal-content').innerHTML = `
+    <button class="btn btn-sm" style="margin-bottom:14px" onclick="goEditList()">← Back to deck</button>
+    <div class="form-group">
+      <label>Question</label>
+      <textarea id="edit-q" rows="3">${escapeHtml(q.q)}</textarea>
+    </div>
+    <div class="form-group">
+      <label>Options</label>
+      <div class="create-opts-grid">
+        <input id="edit-opt-0" value="${escapeHtml(q.opts[0] || '')}" placeholder="Option 1"/>
+        <input id="edit-opt-1" value="${escapeHtml(q.opts[1] || '')}" placeholder="Option 2"/>
+        <input id="edit-opt-2" value="${escapeHtml(q.opts[2] || '')}" placeholder="Option 3"/>
+        <input id="edit-opt-3" value="${escapeHtml(q.opts[3] || '')}" placeholder="Option 4"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Correct answer</label>
+      <select id="edit-correct">
+        <option value="0" ${q.ans === 0 ? 'selected' : ''}>Option 1</option>
+        <option value="1" ${q.ans === 1 ? 'selected' : ''}>Option 2</option>
+        <option value="2" ${q.ans === 2 ? 'selected' : ''}>Option 3</option>
+        <option value="3" ${q.ans === 3 ? 'selected' : ''}>Option 4</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Explanation <span class="form-optional">(optional)</span></label>
+      <textarea id="edit-exp" rows="2">${escapeHtml(q.exp || '')}</textarea>
+    </div>
+    <p id="edit-error" style="color:var(--red);font-size:12px;margin-bottom:8px;display:none"></p>
+    <div style="display:flex;gap:10px">
+      <button class="btn" onclick="goEditList()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveEditCard()">Save changes</button>
+    </div>`;
+}
+
+function renderNewCardForm() {
+  $('#modal-title').textContent = 'Add card';
+  $('#modal-content').innerHTML = `
+    <button class="btn btn-sm" style="margin-bottom:14px" onclick="goEditList()">← Back to deck</button>
+    <div class="form-group">
+      <label>Question</label>
+      <textarea id="new-q" rows="3" placeholder="Type your question here…"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Options</label>
+      <div class="create-opts-grid">
+        <input id="new-opt-0" placeholder="Option 1"/>
+        <input id="new-opt-1" placeholder="Option 2"/>
+        <input id="new-opt-2" placeholder="Option 3"/>
+        <input id="new-opt-3" placeholder="Option 4"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Correct answer</label>
+      <select id="new-correct">
+        <option value="0">Option 1</option>
+        <option value="1">Option 2</option>
+        <option value="2">Option 3</option>
+        <option value="3">Option 4</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Explanation <span class="form-optional">(optional)</span></label>
+      <textarea id="new-exp" rows="2" placeholder="Explain the correct answer…"></textarea>
+    </div>
+    <p id="new-error" style="color:var(--red);font-size:12px;margin-bottom:8px;display:none"></p>
+    <div style="display:flex;gap:10px">
+      <button class="btn" onclick="goEditList()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveNewEditCard()">Add to deck</button>
+    </div>`;
+}
+
+function goEditCard(i) { editCardIdx = i; editView = 'edit'; renderEditModal(); }
+function goNewCard()   { editView = 'new';  renderEditModal(); }
+function goEditList()  { editView = 'list'; renderEditModal(); }
+
+function saveEditCard() {
+  const qText = ($('#edit-q').value || '').trim();
+  const opts  = [0,1,2,3].map(n => ($(`#edit-opt-${n}`).value || '').trim());
+  const ans   = parseInt($('#edit-correct').value);
+  const exp   = ($('#edit-exp').value || '').trim();
+  const err   = $('#edit-error');
+  if (!qText)   { err.textContent = 'Please enter a question.';   err.style.display = ''; return; }
+  if (!opts[0]) { err.textContent = 'Please fill in Option 1.';   err.style.display = ''; return; }
+  if (!opts[1]) { err.textContent = 'Please fill in Option 2.';   err.style.display = ''; return; }
+  if (!opts[2]) { err.textContent = 'Please fill in Option 3.';   err.style.display = ''; return; }
+  if (!opts[3]) { err.textContent = 'Please fill in Option 4.';   err.style.display = ''; return; }
+  allQuestions[editCardIdx] = { ...allQuestions[editCardIdx], q: qText, opts, ans, exp };
+  updateUploadCard();
+  goEditList();
+}
+
+function saveNewEditCard() {
+  const qText = ($('#new-q').value || '').trim();
+  const opts  = [0,1,2,3].map(n => ($(`#new-opt-${n}`).value || '').trim());
+  const ans   = parseInt($('#new-correct').value);
+  const exp   = ($('#new-exp').value || '').trim();
+  const err   = $('#new-error');
+  if (!qText)   { err.textContent = 'Please enter a question.';   err.style.display = ''; return; }
+  if (!opts[0]) { err.textContent = 'Please fill in Option 1.';   err.style.display = ''; return; }
+  if (!opts[1]) { err.textContent = 'Please fill in Option 2.';   err.style.display = ''; return; }
+  if (!opts[2]) { err.textContent = 'Please fill in Option 3.';   err.style.display = ''; return; }
+  if (!opts[3]) { err.textContent = 'Please fill in Option 4.';   err.style.display = ''; return; }
+  allQuestions.push({
+    id:       `edit_${Date.now()}`,
+    mod:      allQuestions[0]?.mod      ?? 1,
+    mod_name: allQuestions[0]?.mod_name ?? 'My Deck',
+    type:     'MCQ',
+    q: qText, opts, ans, exp,
+  });
+  updateUploadCard();
+  goEditList();
+}
+
+function deleteEditCard(i) {
+  allQuestions.splice(i, 1);
+  updateUploadCard();
+  renderEditList();
 }
 
 // ── Quiz start ─────────────────────────────────────────────────────────────
@@ -783,10 +1012,49 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => setView(btn.dataset.view));
   });
 
-  // Escape key closes modal
+  // Escape key closes modal or menu
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeModal();
+    if (e.key === 'Escape') { closeMenu(); closeModal(); }
   });
+
+  // Click outside closes menu
+  document.addEventListener('click', e => {
+    if (!document.getElementById('menu-wrap')?.contains(e.target)) closeMenu();
+  });
+
+  // ── Drag-to-upload on the home Upload card ──────────────────────────────
+  const uploadCard = document.getElementById('card-upload');
+  if (uploadCard) {
+    uploadCard.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      uploadCard.classList.add('drag-over');
+    });
+    uploadCard.addEventListener('dragleave', e => {
+      // Only remove if leaving the card itself (not a child)
+      if (!uploadCard.contains(e.relatedTarget)) {
+        uploadCard.classList.remove('drag-over');
+      }
+    });
+    uploadCard.addEventListener('drop', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      uploadCard.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+      if (!file.name.endsWith('.json') && file.type !== 'application/json') {
+        openModal('upload');
+        setTimeout(() => showModalError('Please drop a .json file.'), 50);
+        return;
+      }
+      // Read → parse → open modal (allQuestions will be set, so modal goes
+      // straight to the module selector instead of the drop zone).
+      const reader = new FileReader();
+      reader.onload  = ev => { parseQuestions(ev.target.result, file.name); openModal('upload'); };
+      reader.onerror = ()  => { openModal('upload'); setTimeout(() => showModalError('Could not read file.'), 50); };
+      reader.readAsText(file);
+    });
+  }
 
   // Restore question cache from localStorage — just update card display, don't open modal
   try {

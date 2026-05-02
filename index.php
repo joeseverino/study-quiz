@@ -34,23 +34,48 @@ if (!file_exists($db_path)) {
     <div id="page-home">
       <div class="mode-grid">
 
-        <button class="mode-card" onclick="openModal('upload')">
-          <div class="mode-icon">📁</div>
+        <!-- Upload -->
+        <div class="mode-card" role="button" tabindex="0"
+             onclick="openModal('upload')"
+             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openModal('upload')}">
+          <div class="mode-icon-wrap">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              <line x1="12" y1="11" x2="12" y2="17"/>
+              <polyline points="9 14 12 11 15 14"/>
+            </svg>
+          </div>
           <div class="mode-title">Upload</div>
           <div class="mode-sub" id="upload-sub">Load a questions.json file</div>
-        </button>
+        </div>
 
-        <button class="mode-card" onclick="openModal('create')">
-          <div class="mode-icon">✏️</div>
+        <!-- Create -->
+        <div class="mode-card" role="button" tabindex="0"
+             onclick="openModal('create')"
+             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openModal('create')}">
+          <div class="mode-icon-wrap">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 20h9"/>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </div>
           <div class="mode-title">Create</div>
           <div class="mode-sub" id="create-sub">Build your own deck</div>
-        </button>
+        </div>
 
-        <button class="mode-card" onclick="openModal('demo')">
-          <div class="mode-icon">▶️</div>
+        <!-- Demo -->
+        <div class="mode-card" role="button" tabindex="0"
+             onclick="openModal('demo')"
+             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openModal('demo')}">
+          <div class="mode-icon-wrap">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
+            </svg>
+          </div>
           <div class="mode-title">Demo</div>
           <div class="mode-sub">5 Georgia Tech questions</div>
-        </button>
+        </div>
 
       </div>
     </div>

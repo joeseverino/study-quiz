@@ -11,7 +11,7 @@ if (!file_exists($db_path)) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CS6250 · Study Quiz</title>
-  <link rel="stylesheet" href="assets/css/style.css?v=11">
+  <link rel="stylesheet" href="assets/css/style.css?v=12">
 </head>
 <body>
 
@@ -104,6 +104,22 @@ if (!file_exists($db_path)) {
         <div class="resume-arrow">→</div>
       </div>
 
+      <!-- Loaded deck card (shown when a deck is loaded, hidden otherwise) -->
+      <div id="deck-card" class="hidden" role="button" tabindex="0"
+           onclick="openModal('upload')"
+           onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openModal('upload')}">
+        <div class="deck-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
+        <div class="deck-info">
+          <div class="deck-title" id="deck-title">questions.json</div>
+          <div class="deck-sub" id="deck-sub">0 questions</div>
+        </div>
+        <div class="deck-action">Study →</div>
+      </div>
+
       <div class="mode-grid">
 
         <!-- Upload -->
@@ -119,6 +135,7 @@ if (!file_exists($db_path)) {
           </div>
           <div class="mode-title">Upload</div>
           <div class="mode-sub" id="upload-sub">Load a questions.json file</div>
+
         </div>
 
         <!-- Create -->
@@ -177,6 +194,6 @@ if (!file_exists($db_path)) {
   </div>
 </div>
 
-<script src="assets/js/quiz.js?v=11"></script>
+<script src="assets/js/quiz.js?v=12"></script>
 </body>
 </html>

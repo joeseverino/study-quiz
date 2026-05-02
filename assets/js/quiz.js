@@ -6,6 +6,7 @@ const LS_KEY        = 'cs6250_questions';
 const CREATE_KEY    = 'cs6250_created_deck';
 const SESSIONS_KEY  = 'cs6250_sessions';
 const QSTATS_KEY    = 'cs6250_qstats';
+const DECK_STATE_KEY = 'cs6250_deck_state'; // persists in-progress deck across export/import
 
 // ── Demo questions ─────────────────────────────────────────────────────────
 const DEMO_QUESTIONS = [
@@ -25,10 +26,10 @@ const DEMO_QUESTIONS = [
   },
   {
     id: 'demo_3', mod: 0, mod_name: 'Georgia Tech Trivia', type: 'MCQ',
-    q: "Georgia Tech's OMSCS program launched in 2014 in partnership with which company?",
-    opts: ['Coursera', 'edX', 'Udacity', 'LinkedIn Learning'],
+    q: 'Georgia Tech set the all-time college football scoring record in 1916 by defeating Cumberland College. What was the final score?',
+    opts: ['150–0', '189–0', '222–0', '256–0'],
     ans: 2,
-    exp: "Georgia Tech partnered with Udacity and AT&T to launch the Online Master of Science in Computer Science (OMSCS), making it one of the first affordable, fully online CS master's degrees at scale."
+    exp: "On October 7, 1916, Georgia Tech defeated Cumberland College 222–0 — the largest margin of victory in college football history. The game is also notable because Cumberland had essentially no football team that year and fielded a squad of random students."
   },
   {
     id: 'demo_4', mod: 0, mod_name: 'Georgia Tech Trivia', type: 'MCQ',
@@ -69,7 +70,7 @@ let editCardIdx = null;
 // Stats import pending data
 let pendingImportData = null;
 
-// Resume state — true only while a question is actively on screen
+// Resume state — true whenever a session is actively in progress
 let quizActive = false;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -121,7 +122,6 @@ function localRecordAnswer(sessionId, questionId, moduleId, correct, questionObj
 
   const qstats = getQStats();
   if (!qstats[questionId]) {
-    // Store card details on first encounter so the export is self-contained
     const card = questionObj ? {
       q:        questionObj.q    || null,
       opts:     questionObj.opts || null,
@@ -139,9 +139,9 @@ function localRecordAnswer(sessionId, questionId, moduleId, correct, questionObj
   saveQStats(qstats);
 }
 
-function localEndSession(sessionId) {
+function localEndSession(id) {
   const sessions = getSessions();
-  const s = sessions.find(x => x.id === sessionId);
+  const s = sessions.find(x => x.id === id);
   if (s) s.ended_at = new Date().toISOString();
   saveSessions(sessions);
 }
@@ -156,7 +156,6 @@ function localGetStats() {
     total_correct:  sessions.reduce((n, s) => n + s.correct, 0),
   };
 
-  // Most-recent first, last 20, modules serialised to match renderer
   const recent = [...sessions]
     .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
     .slice(0, 20)
@@ -175,7 +174,72 @@ function localGetStats() {
 }
 
 function localResetStats() {
-  try { localStorage.removeItem(SESSIONS_KEY); localStorage.removeItem(QSTATS_KEY); } catch {}
+  try {
+    localStorage.removeItem(SESSIONS_KEY);
+    localStorage.removeItem(QSTATS_KEY);
+    localStorage.removeItem(DECK_STATE_KEY);
+  } catch {}
+  // Also wipe the live session so resume card clears
+  if (sessionId) { try { /* already wiped from storage */ } catch {} }
+  sessionId    = null;
+  quizActive   = false;
+  deck         = [];
+  deckPos      = 0;
+  sessionRight = 0;
+  sessionTotal = 0;
+  sessionByMod = {};
+}
+
+// ── Deck-state save/restore (for export→import cross-device resume) ────────
+function saveDeckState() {
+  if (!quizActive || deck.length === 0) return;
+  try {
+    const state = {
+      deckIds:       deck.map(q => q.id),
+      deckPos,
+      round,
+      sessionRight,
+      sessionTotal,
+      sessionByMod,
+      selectedModIds: [...selectedMods],
+      loadedFileName,
+    };
+    localStorage.setItem(DECK_STATE_KEY, JSON.stringify(state));
+  } catch {}
+}
+
+function tryRestoreDeckState() {
+  try {
+    const raw = localStorage.getItem(DECK_STATE_KEY);
+    if (!raw || allQuestions.length === 0) return;
+    const state = JSON.parse(raw);
+    if (!state || !Array.isArray(state.deckIds) || state.deckIds.length === 0) return;
+
+    // Rebuild deck from saved question IDs
+    const qMap = {};
+    allQuestions.forEach(q => { qMap[q.id] = q; });
+    const restoredDeck = state.deckIds.map(id => qMap[id]).filter(Boolean);
+
+    // Require ≥90% match — silently skip if questions don't match
+    if (restoredDeck.length < Math.floor(state.deckIds.length * 0.9)) return;
+
+    deck         = restoredDeck;
+    deckPos      = Math.min(state.deckPos || 0, Math.max(0, deck.length - 1));
+    round        = state.round || 1;
+    sessionRight = state.sessionRight || 0;
+    sessionTotal = state.sessionTotal || 0;
+    sessionByMod = state.sessionByMod || {};
+    if (Array.isArray(state.selectedModIds)) selectedMods = new Set(state.selectedModIds);
+
+    // Start a fresh session on this device to track continued answers
+    sessionId  = localStartSession([...selectedMods]);
+    quizActive = true;
+
+    localStorage.removeItem(DECK_STATE_KEY);
+    updateResumeCard();
+  } catch {
+    // Silently ignore corrupt state
+  }
 }
 
 // ── View switching ─────────────────────────────────────────────────────────
@@ -194,10 +258,8 @@ function updateResumeCard() {
   const sub  = document.getElementById('resume-sub');
   if (!card) return;
   if (quizActive && deck.length > 0) {
-    const q         = deck[deckPos];
-    const modLabel  = q ? (q.mod_name || `Module ${q.mod}`) : '';
     const scoreText = sessionTotal > 0 ? ` · ${sessionRight}/${sessionTotal} correct` : '';
-    if (sub) sub.textContent = `${modLabel} · Q ${deckPos + 1} of ${deck.length}${scoreText}`;
+    if (sub) sub.textContent = `${deckPos} / ${deck.length} answered${scoreText}`;
     card.classList.remove('hidden');
   } else {
     card.classList.add('hidden');
@@ -234,7 +296,6 @@ function handleOverlayClick(e) {
 
 // ── Upload modal ───────────────────────────────────────────────────────────
 function renderUploadModal() {
-  // If questions already loaded, skip straight to module selector
   if (allQuestions.length > 0) {
     renderModalModuleSelector();
     return;
@@ -299,6 +360,18 @@ function parseQuestions(text, filename) {
 }
 
 function applyQuestions(data, filename) {
+  // Loading new questions wipes any active session
+  if (quizActive && sessionId) {
+    localEndSession(sessionId);
+    sessionId = null;
+  }
+  quizActive   = false;
+  deck         = [];
+  deckPos      = 0;
+  sessionRight = 0;
+  sessionTotal = 0;
+  sessionByMod = {};
+
   allQuestions   = data;
   loadedFileName = filename || 'questions.json';
 
@@ -309,7 +382,10 @@ function applyQuestions(data, filename) {
   });
   allModules = Object.values(modMap).sort((a, b) => a.id - b.id);
 
-  updateUploadCard();
+  updateDeckCard();
+
+  // Try to restore a previously saved/imported deck position
+  tryRestoreDeckState();
 
   // If the modal is open, transition to module selector
   if (!$('#modal-overlay').classList.contains('hidden')) {
@@ -317,15 +393,32 @@ function applyQuestions(data, filename) {
   }
 }
 
-function updateUploadCard() {
-  const sub = $('#upload-sub');
-  if (!sub) return;
+// ── Deck card (home screen indicator for loaded deck) ──────────────────────
+function updateDeckCard() {
+  const card  = document.getElementById('deck-card');
+  const title = document.getElementById('deck-title');
+  const sub   = document.getElementById('deck-sub');
+  if (!card) return;
+
   if (allQuestions.length > 0) {
-    sub.innerHTML = `<span style="color:var(--green-mid)">${escapeHtml(loadedFileName)} · ${allQuestions.length} questions</span>`;
+    if (title) title.textContent = loadedFileName === 'demo' ? 'Demo deck' : loadedFileName;
+    if (sub)   sub.textContent   = `${allQuestions.length} questions`;
+    card.classList.remove('hidden');
   } else {
-    sub.innerHTML = `Drop .json here<br><span style="font-size:10px;opacity:.75">or click to browse</span>`;
+    card.classList.add('hidden');
+  }
+
+  // Keep the upload mode-card sub consistent
+  const uploadSub = document.getElementById('upload-sub');
+  if (uploadSub) {
+    uploadSub.innerHTML = allQuestions.length > 0
+      ? 'Change deck'
+      : 'Load a questions.json file';
   }
 }
+
+// Legacy alias used in a few places
+function updateUploadCard() { updateDeckCard(); }
 
 function showModalError(msg) {
   const el = $('#modal-file-error');
@@ -368,14 +461,22 @@ function renderModalModuleSelector() {
 }
 
 function clearQuestions() {
+  // End any active session when deck is cleared
+  if (sessionId) { localEndSession(sessionId); sessionId = null; }
+  localStorage.removeItem(DECK_STATE_KEY);
   quizActive     = false;
   deck           = [];
+  deckPos        = 0;
+  sessionRight   = 0;
+  sessionTotal   = 0;
+  sessionByMod   = {};
   allQuestions   = [];
   allModules     = [];
   selectedMods   = new Set();
   loadedFileName = '';
   try { localStorage.removeItem(LS_KEY); } catch {}
-  updateUploadCard();
+  updateDeckCard();
+  updateResumeCard();
   renderUploadModal();
 }
 
@@ -544,7 +645,7 @@ function addCreateCard() {
     exp,
   });
   saveCreatedDeck(deck);
-  renderCreateModal(); // re-render to show new card in list
+  renderCreateModal();
 }
 
 function deleteCreateCard(idx) {
@@ -603,8 +704,8 @@ function toggleMenu(e) {
   const dropdown = document.getElementById('menu-dropdown');
   const isOpen   = !dropdown.classList.contains('hidden');
   if (isOpen) { closeMenu(); return; }
-  menuResetCancel();   // reset any leftover confirm state
-  menuImportCancel();  // reset any leftover import confirm state
+  menuResetCancel();
+  menuImportCancel();
   updateMenuStates();
   dropdown.classList.remove('hidden');
   document.getElementById('menu-btn').classList.add('open');
@@ -640,6 +741,7 @@ function menuResetGo() {
   closeMenu();
   menuResetCancel();
   localResetStats();
+  updateResumeCard();
   if (!$('#page-stats').classList.contains('hidden')) loadStats();
 }
 
@@ -648,7 +750,26 @@ function menuExportStats() {
   closeMenu();
   const sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
   const qstats   = JSON.parse(localStorage.getItem(QSTATS_KEY)   || '{}');
-  const payload  = { version: 1, exported_at: new Date().toISOString(), sessions, qstats };
+
+  // Bundle current deck position so the other device can resume at the exact spot
+  const deckState = (quizActive && deck.length > 0) ? {
+    deckIds:        deck.map(q => q.id),
+    deckPos,
+    round,
+    sessionRight,
+    sessionTotal,
+    sessionByMod,
+    selectedModIds: [...selectedMods],
+    loadedFileName,
+  } : null;
+
+  const payload = {
+    version:     2,
+    exported_at: new Date().toISOString(),
+    sessions,
+    qstats,
+    deckState,
+  };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
@@ -674,8 +795,13 @@ function menuImportStats() {
         }
         pendingImportData = data;
         const n   = data.sessions.length;
+        const hasDeck = !!(data.deckState && data.deckState.deckIds?.length);
         const msg = document.getElementById('mi-import-msg');
-        if (msg) msg.textContent = `Replace with ${n} session${n !== 1 ? 's' : ''}?`;
+        if (msg) {
+          msg.textContent = hasDeck
+            ? `Import ${n} session${n !== 1 ? 's' : ''} + resume position?`
+            : `Replace with ${n} session${n !== 1 ? 's' : ''}?`;
+        }
         document.getElementById('mi-import-stats').classList.add('hidden');
         document.getElementById('mi-export-stats').disabled = true;
         document.getElementById('mi-import-confirm').classList.remove('hidden');
@@ -690,8 +816,24 @@ function menuImportStats() {
 
 function menuImportGo() {
   if (!pendingImportData) return;
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(pendingImportData.sessions));
-  localStorage.setItem(QSTATS_KEY,   JSON.stringify(pendingImportData.qstats));
+
+  // Close any open (unended) sessions in the imported data so stats are clean
+  const importedSessions = (pendingImportData.sessions || []).map(s =>
+    s.ended_at ? s : { ...s, ended_at: new Date().toISOString() }
+  );
+
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(importedSessions));
+  localStorage.setItem(QSTATS_KEY,   JSON.stringify(pendingImportData.qstats || {}));
+
+  if (pendingImportData.deckState) {
+    // Save deck state; will be restored when (or if) matching questions are loaded
+    localStorage.setItem(DECK_STATE_KEY, JSON.stringify(pendingImportData.deckState));
+    // Try immediately — questions may already be loaded
+    tryRestoreDeckState();
+  } else {
+    localStorage.removeItem(DECK_STATE_KEY);
+  }
+
   pendingImportData = null;
   closeMenu();
   if (!$('#page-stats').classList.contains('hidden')) loadStats();
@@ -707,7 +849,6 @@ function menuImportCancel() {
 
 // ── Edit modal ──────────────────────────────────────────────────────────────
 function openEditModal() {
-  // Deep-copy so we never mutate DEMO_QUESTIONS or stale references
   allQuestions = JSON.parse(JSON.stringify(allQuestions));
   editView     = 'list';
   editCardIdx  = null;
@@ -836,7 +977,7 @@ function saveEditCard() {
   if (!opts[2]) { err.textContent = 'Please fill in Option 3.';   err.style.display = ''; return; }
   if (!opts[3]) { err.textContent = 'Please fill in Option 4.';   err.style.display = ''; return; }
   allQuestions[editCardIdx] = { ...allQuestions[editCardIdx], q: qText, opts, ans, exp };
-  updateUploadCard();
+  updateDeckCard();
   goEditList();
 }
 
@@ -858,18 +999,22 @@ function saveNewEditCard() {
     type:     'MCQ',
     q: qText, opts, ans, exp,
   });
-  updateUploadCard();
+  updateDeckCard();
   goEditList();
 }
 
 function deleteEditCard(i) {
   allQuestions.splice(i, 1);
-  updateUploadCard();
+  updateDeckCard();
   renderEditList();
 }
 
 // ── Quiz start ─────────────────────────────────────────────────────────────
 function startQuiz() {
+  // Always end any existing session and clear saved deck state
+  if (sessionId) { localEndSession(sessionId); sessionId = null; }
+  localStorage.removeItem(DECK_STATE_KEY);
+
   quizActive   = false;
   const pool   = allQuestions.filter(q => selectedMods.has(q.mod));
   deck         = shuffle(pool);
@@ -889,6 +1034,7 @@ function getPool() { return allQuestions.filter(q => selectedMods.has(q.mod)); }
 
 // ── Quiz shell ─────────────────────────────────────────────────────────────
 function restoreQuizShell() {
+  // action-row lives OUTSIDE the card so it can be fixed at the bottom on mobile
   $('#page-quiz').innerHTML = `
     <div class="pbar-wrap"><div class="pbar-fill" id="pbar" style="width:0%"></div></div>
     <div class="meta-row">
@@ -896,17 +1042,17 @@ function restoreQuizShell() {
       <span class="mod-tag" id="q-mod"></span>
       <span class="round-tag" id="q-round"></span>
     </div>
-    <div class="card">
+    <div class="card quiz-card">
       <p class="q-text" id="q-text"></p>
       <div class="opts" id="q-opts"></div>
       <div class="fb" id="q-fb"></div>
-      <div class="action-row">
-        <button class="btn btn-primary hidden" id="btn-next" onclick="nextQuestion()">Next →</button>
-        <button class="btn btn-quit" onclick="quitQuiz()">← Quit</button>
-      </div>
     </div>
     <div class="kbd-hint" id="kbd-hint"></div>
-    <div class="session-counter" id="session-score"></div>`;
+    <div class="session-counter" id="session-score"></div>
+    <div class="action-row">
+      <button class="btn btn-primary hidden" id="btn-next" onclick="nextQuestion()">Next →</button>
+      <button class="btn btn-back" onclick="quitQuiz()">← Go Back</button>
+    </div>`;
 }
 
 // ── Render question ────────────────────────────────────────────────────────
@@ -914,7 +1060,7 @@ function renderQuestion() {
   quizActive = true;
   answered   = false;
   currentQ   = deck[deckPos];
-  const total = getPool().length;
+  const total = deck.length;
   const pos   = deckPos + 1;
   const isTF  = currentQ.type === 'T/F';
 
@@ -942,6 +1088,7 @@ function renderQuestion() {
   fb.innerHTML     = '';
   $('#btn-next').classList.add('hidden');
 
+  // Keyboard hint — hidden on mobile via CSS
   $('#kbd-hint').innerHTML = isTF
     ? 'Press <kbd>T</kbd> True &nbsp;·&nbsp; <kbd>F</kbd> False'
     : 'Press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> to answer';
@@ -984,7 +1131,7 @@ async function pickAnswer(chosen) {
   }
   fb.style.display = 'block';
   $('#btn-next').classList.remove('hidden');
-  $('#kbd-hint').innerHTML = 'Press <kbd>→</kbd> or <kbd>Enter</kbd> for next';
+  $('#kbd-hint').innerHTML = 'Press <kbd>Space</kbd> <kbd>→</kbd> or <kbd>Enter</kbd> for next';
   $('#session-score').textContent = `Session: ${sessionRight} / ${sessionTotal} correct`;
 
   if (sessionId) {
@@ -995,7 +1142,7 @@ async function pickAnswer(chosen) {
 // ── Keyboard shortcuts ─────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-  if (!$('#modal-overlay').classList.contains('hidden')) return; // modal open
+  if (!$('#modal-overlay').classList.contains('hidden')) return;
   if ($('#page-quiz').classList.contains('hidden') || !currentQ) return;
 
   const isTF = currentQ.type === 'T/F';
@@ -1009,14 +1156,25 @@ document.addEventListener('keydown', e => {
       if (n >= 1 && n <= currentQ.opts.length) pickAnswer(n - 1);
     }
   } else {
-    if (e.key === 'ArrowRight' || e.key === 'Enter') nextQuestion();
+    if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault(); // prevent space from scrolling the page
+      nextQuestion();
+    }
   }
 });
 
-// ── Next / Quit ────────────────────────────────────────────────────────────
+// ── Next / Go Back ─────────────────────────────────────────────────────────
 function nextQuestion() {
   deckPos++;
   if (deckPos >= deck.length) {
+    if (round === 1) {
+      // First pass complete — end session and show results
+      if (sessionId) localEndSession(sessionId);
+      quizActive = false;
+      showResults();
+      return;
+    }
+    // Round 2+ — reshuffle and keep going
     round++;
     deck    = shuffle(getPool());
     deckPos = 0;
@@ -1024,10 +1182,10 @@ function nextQuestion() {
   renderQuestion();
 }
 
+// Go Back: preserve session so user can resume from the home screen
 function quitQuiz() {
-  quizActive = false;
-  if (sessionId) localEndSession(sessionId);
-  showResults();
+  setView('home');
+  // quizActive stays true → resume card remains visible
 }
 
 // ── Results ────────────────────────────────────────────────────────────────
@@ -1167,25 +1325,21 @@ function loadStats() {
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  // Start on home view — apply scroll lock immediately
   document.body.classList.add('view-home');
 
-  // Nav buttons
   $$('nav button[data-view]').forEach(btn => {
     btn.addEventListener('click', () => setView(btn.dataset.view));
   });
 
-  // Escape key closes modal or menu
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { closeMenu(); closeModal(); }
   });
 
-  // Click outside closes menu
   document.addEventListener('click', e => {
     if (!document.getElementById('menu-wrap')?.contains(e.target)) closeMenu();
   });
 
-  // ── Drag-to-upload on the home Upload card ──────────────────────────────
+  // Drag-to-upload on the home Upload card
   const uploadCard = document.getElementById('card-upload');
   if (uploadCard) {
     uploadCard.addEventListener('dragover', e => {
@@ -1194,7 +1348,6 @@ document.addEventListener('DOMContentLoaded', () => {
       uploadCard.classList.add('drag-over');
     });
     uploadCard.addEventListener('dragleave', e => {
-      // Only remove if leaving the card itself (not a child)
       if (!uploadCard.contains(e.relatedTarget)) {
         uploadCard.classList.remove('drag-over');
       }
@@ -1210,8 +1363,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => showModalError('Please drop a .json file.'), 50);
         return;
       }
-      // Read → parse → open modal (allQuestions will be set, so modal goes
-      // straight to the module selector instead of the drop zone).
       const reader = new FileReader();
       reader.onload  = ev => { parseQuestions(ev.target.result, file.name); openModal('upload'); };
       reader.onerror = ()  => { openModal('upload'); setTimeout(() => showModalError('Could not read file.'), 50); };
@@ -1219,7 +1370,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Restore question cache from localStorage — just update card display, don't open modal
+  // Restore question cache from localStorage
   try {
     const cached = localStorage.getItem(LS_KEY);
     if (cached) {
@@ -1233,11 +1384,12 @@ document.addEventListener('DOMContentLoaded', () => {
           modMap[q.mod].count++;
         });
         allModules = Object.values(modMap).sort((a, b) => a.id - b.id);
-        updateUploadCard();
+        updateDeckCard();
+        // Check for a pending deck-state restore (e.g. after importing stats)
+        tryRestoreDeckState();
       }
     }
   } catch {}
 
-  // Update create card state
   updateCreateCard();
 });

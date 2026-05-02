@@ -10,7 +10,7 @@ if (!file_exists($db_path)) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CS6250 Study Quiz</title>
+  <title>CS6250 · Study Quiz</title>
   <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
@@ -20,7 +20,7 @@ if (!file_exists($db_path)) {
   <header>
     <a class="logo" href="#" onclick="setView('home');return false;">
       <span class="logo-dot"></span>
-      CS6250 Study Quiz
+      CS6250 · Study Quiz
     </a>
     <nav>
       <button data-view="home" class="active">Quiz</button>
@@ -30,19 +30,24 @@ if (!file_exists($db_path)) {
 
   <main>
 
-    <!-- ── Home ─────────────────────────────────────────────────────────── -->
+    <!-- ── Home ──────────────────────────────────────────────────────────── -->
     <div id="page-home">
 
-      <!-- File loader (shown when no questions are loaded) -->
-      <div id="file-loader" class="card mb-2">
-        <p style="font-size:15px;font-weight:500;margin-bottom:6px">Load your questions file</p>
-        <p class="text-muted mb-2">Select your local <code>questions.json</code> file. It's read directly in your browser — nothing is uploaded to the server.</p>
-        <label id="file-label" class="btn btn-primary" style="display:inline-flex;cursor:pointer;">
-          Choose questions.json
+      <!-- File loader (shown when no questions cached) -->
+      <div id="file-loader" class="card mb-2" style="display:none">
+        <label id="file-label" style="cursor:pointer;display:block">
+          <div class="file-inner">
+            <div class="file-icon">📂</div>
+            <div class="file-title">Load your questions file</div>
+            <div class="file-sub">Click to select <code>questions.json</code> from your computer</div>
+            <span class="btn btn-primary btn-sm" style="pointer-events:none">Choose file</span>
+          </div>
           <input type="file" id="file-input" accept=".json,application/json" style="display:none">
         </label>
-        <p id="file-error" class="text-muted mt-1" style="color:var(--red);display:none"></p>
-        <p class="text-muted mt-1" style="font-size:12px">Don't have one yet? Download the example: <a href="data/questions.example.json" download>questions.example.json</a></p>
+        <p class="text-muted" style="font-size:12px;text-align:center">
+          Read locally in your browser — nothing is uploaded to the server.
+        </p>
+        <p id="file-error" class="text-muted mt-1" style="color:var(--red);display:none;text-align:center"></p>
       </div>
 
       <!-- Module selector (shown once questions are loaded) -->
@@ -54,34 +59,19 @@ if (!file_exists($db_path)) {
           </div>
           <button class="btn btn-sm" id="change-file-btn">Change file</button>
         </div>
-        <p class="text-muted mb-2" style="font-size:13px">Select modules. Every question is shown once before any repeats.</p>
+        <p class="text-muted mb-2" style="font-size:13px">
+          Pick modules to study. Questions are randomized every session.
+        </p>
         <div class="mod-grid" id="mod-grid"></div>
-        <button id="start-btn" class="btn btn-primary btn-block" disabled>Select a module to start →</button>
+        <button id="start-btn" class="btn btn-primary btn-block mt-1" disabled>Start →</button>
       </div>
 
     </div>
 
-    <!-- ── Quiz ──────────────────────────────────────────────────────────── -->
-    <div id="page-quiz" class="hidden">
-      <div class="pbar-wrap"><div class="pbar-fill" id="pbar" style="width:0%"></div></div>
-      <div class="meta-row">
-        <span class="badge" id="q-pos"></span>
-        <span class="mod-tag" id="q-mod"></span>
-        <span class="round-tag" id="q-round"></span>
-      </div>
-      <div class="card">
-        <p class="q-text" id="q-text"></p>
-        <div class="opts" id="q-opts"></div>
-        <div class="fb" id="q-fb"></div>
-        <div class="action-row">
-          <button class="btn btn-primary hidden" id="btn-next" onclick="nextQuestion()">Next →</button>
-          <button class="btn btn-quit" onclick="quitQuiz()">← Quit</button>
-        </div>
-      </div>
-      <div class="session-counter" id="session-score"></div>
-    </div>
+    <!-- ── Quiz ───────────────────────────────────────────────────────────── -->
+    <div id="page-quiz" class="hidden"></div>
 
-    <!-- ── Stats ─────────────────────────────────────────────────────────── -->
+    <!-- ── Stats ──────────────────────────────────────────────────────────── -->
     <div id="page-stats" class="hidden">
       <div class="spinner"></div>
     </div>

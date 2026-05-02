@@ -370,6 +370,45 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── Keyboard hint ────────────────────────────────────────────────────── */
+.kbd-hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 10px;
+  line-height: 1.8;
+}
+.kbd-hint kbd, kbd {
+  display: inline-block;
+  background: var(--surface);
+  border: 0.5px solid var(--border-med);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-family: -apple-system, BlinkMacSystemFont, monospace;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+/* ── File loader polish ───────────────────────────────────────────────── */
+#file-loader .file-inner {
+  border: 1.5px dashed var(--border-med);
+  border-radius: var(--radius-md);
+  padding: 28px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+  margin-bottom: 10px;
+}
+#file-loader .file-inner:hover {
+  border-color: var(--green-mid);
+  background: var(--surface2);
+}
+#file-loader .file-icon { font-size: 30px; margin-bottom: 10px; }
+#file-loader .file-title { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+#file-loader .file-sub { font-size: 13px; color: var(--text-2); margin-bottom: 12px; }
+
 /* ── Misc ─────────────────────────────────────────────────────────────── */
 .text-muted  { color: var(--text-3); font-size: 13px; }
 .mt-1  { margin-top: 0.5rem; }

@@ -1,28 +1,27 @@
 /* quiz.js — CS6250 Study Quiz
-   Questions are loaded from a local JSON file via the browser File API.
-   Nothing is uploaded to the server. Stats are tracked server-side. */
+   Questions are loaded from a local JSON file (never uploaded to the server).
+   Stats are tracked server-side via api.php. */
 
-const API     = 'api.php';
-const LS_KEY  = 'cs6250_questions';       // localStorage key for cached questions
-const LETTERS = ['A', 'B', 'C', 'D'];
+const API    = 'api.php';
+const LS_KEY = 'cs6250_questions';
 
 // ── State ─────────────────────────────────────────────────────────────────
-let allQuestions  = [];   // full parsed question array
-let allModules    = [];   // [{ id, name, count }]
-let selectedMods  = new Set();
+let allQuestions   = [];
+let allModules     = [];
+let selectedMods   = new Set();
 let loadedFileName = '';
 
-let deck          = [];
-let deckPos       = 0;
-let round         = 1;
-let sessionId     = null;
-let sessionRight  = 0;
-let sessionTotal  = 0;
-let sessionByMod  = {};
-let answered      = false;
-let currentQ      = null;
+let deck         = [];
+let deckPos      = 0;
+let round        = 1;
+let sessionId    = null;
+let sessionRight = 0;
+let sessionTotal = 0;
+let sessionByMod = {};
+let answered     = false;
+let currentQ     = null;
 
-// ── Tiny helpers ──────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────
 const $  = (s, ctx = document) => ctx.querySelector(s);
 const $$ = (s, ctx = document) => [...ctx.querySelectorAll(s)];
 
@@ -38,12 +37,10 @@ async function api(action, method = 'GET', body = null) {
   try {
     const r = await fetch(`${API}?action=${action}`, opts);
     return await r.json();
-  } catch {
-    return { error: 'Network error' };
-  }
+  } catch { return { error: 'Network error' }; }
 }
 
-// ── View switching ────────────────────────────────────────────────────────
+// ── View switching ─────────────────────────────────────────────────────────
 function setView(v) {
   $$('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === v));
   $('#page-home').classList.toggle('hidden',  v !== 'home');
@@ -52,52 +49,44 @@ function setView(v) {
   if (v === 'stats') loadStats();
 }
 
-// ── File loading ──────────────────────────────────────────────────────────
+// ── File loading ───────────────────────────────────────────────────────────
 function initFileInput() {
   const input = $('#file-input');
   input.addEventListener('change', () => {
     const file = input.files[0];
     if (!file) return;
-    loadedFileName = file.name;
     const reader = new FileReader();
-    reader.onload = e => parseQuestions(e.target.result, file.name);
+    reader.onload  = e => parseQuestions(e.target.result, file.name);
     reader.onerror = () => showFileError('Could not read file.');
     reader.readAsText(file);
-    // Reset so re-selecting same file still fires change
     input.value = '';
   });
 
   $('#change-file-btn').addEventListener('click', () => {
-    clearQuestions();
-    showFileLoader();
+    allQuestions = [];
+    allModules   = [];
+    selectedMods = new Set();
+    try { localStorage.removeItem(LS_KEY); } catch {}
+    $('#module-selector').style.display = 'none';
+    $('#file-loader').style.display = '';
   });
 }
 
 function parseQuestions(text, filename) {
   let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    showFileError('Invalid JSON — could not parse the file.');
-    return;
+  try { data = JSON.parse(text); }
+  catch { showFileError('Invalid JSON — could not parse the file.'); return; }
+
+  if (!Array.isArray(data) || !data.length) {
+    showFileError('File must be a non-empty JSON array.'); return;
+  }
+  const s = data[0];
+  if (!s.id || !s.q || !Array.isArray(s.opts) || s.ans === undefined) {
+    showFileError('Questions need id, q, opts (array), and ans fields.'); return;
   }
 
-  if (!Array.isArray(data) || data.length === 0) {
-    showFileError('File must be a JSON array of question objects.');
-    return;
-  }
-
-  // Basic validation of first item
-  const sample = data[0];
-  if (!sample.id || !sample.q || !Array.isArray(sample.opts) || sample.ans === undefined) {
-    showFileError('Questions must have id, q, opts (array), and ans fields.');
-    return;
-  }
-
-  // Cache in localStorage so it survives page refreshes
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify({ filename, questions: data }));
-  } catch { /* storage full — just continue without caching */ }
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ filename, questions: data })); }
+  catch { /* storage full — fine */ }
 
   applyQuestions(data, filename);
 }
@@ -106,7 +95,6 @@ function applyQuestions(data, filename) {
   allQuestions   = data;
   loadedFileName = filename || 'questions.json';
 
-  // Build module list
   const modMap = {};
   data.forEach(q => {
     if (!modMap[q.mod]) modMap[q.mod] = { id: q.mod, name: q.mod_name || `Module ${q.mod}`, count: 0 };
@@ -115,27 +103,12 @@ function applyQuestions(data, filename) {
   allModules = Object.values(modMap).sort((a, b) => a.id - b.id);
 
   hideFileError();
-  showModuleSelector();
-}
-
-function clearQuestions() {
-  allQuestions = [];
-  allModules   = [];
-  selectedMods = new Set();
-  try { localStorage.removeItem(LS_KEY); } catch {}
-}
-
-function showFileLoader() {
-  $('#file-loader').style.display = '';
-  $('#module-selector').style.display = 'none';
-}
-
-function showModuleSelector() {
   $('#file-loader').style.display = 'none';
   $('#module-selector').style.display = '';
   $('#file-loaded-name').textContent  = loadedFileName;
   $('#file-loaded-count').textContent = `· ${allQuestions.length} questions`;
   renderModuleGrid();
+  selectAll(); // default: all modules selected, ready to start immediately
 }
 
 function showFileError(msg) {
@@ -148,15 +121,15 @@ function hideFileError() {
   $('#file-error').style.display = 'none';
 }
 
-// ── Module selector ───────────────────────────────────────────────────────
+// ── Module selector ────────────────────────────────────────────────────────
 function renderModuleGrid() {
-  selectedMods = new Set();
   const grid = $('#mod-grid');
   grid.innerHTML = '';
 
   allModules.forEach(m => {
     const btn = document.createElement('button');
     btn.className = 'mod-card';
+    btn.dataset.modId = m.id;
     btn.innerHTML = `<div class="mod-num">Module ${m.id}</div>
                      <div class="mod-name">${m.name}</div>
                      <div class="mod-cnt">${m.count} questions</div>`;
@@ -164,23 +137,20 @@ function renderModuleGrid() {
     grid.appendChild(btn);
   });
 
-  if (allModules.length > 1) {
-    const all = document.createElement('button');
-    all.className = 'mod-card';
-    all.id = 'mod-all';
-    all.innerHTML = `<div class="mod-num" style="color:var(--text-2)">All</div>
-                     <div class="mod-name">All modules</div>
-                     <div class="mod-cnt">${allQuestions.length} questions total</div>`;
-    all.addEventListener('click', selectAll);
-    grid.appendChild(all);
-  }
+  const all = document.createElement('button');
+  all.className = 'mod-card';
+  all.id = 'mod-all';
+  all.innerHTML = `<div class="mod-num" style="color:var(--text-2)">All</div>
+                   <div class="mod-name">All modules</div>
+                   <div class="mod-cnt">${allQuestions.length} questions total</div>`;
+  all.addEventListener('click', selectAll);
+  grid.appendChild(all);
 
   updateStartBtn();
 }
 
 function toggleMod(id, card) {
-  const allBtn = $('#mod-all');
-  if (allBtn) allBtn.classList.remove('selected');
+  $('#mod-all')?.classList.remove('selected');
   card.classList.toggle('selected');
   if (card.classList.contains('selected')) selectedMods.add(id);
   else selectedMods.delete(id);
@@ -190,18 +160,19 @@ function toggleMod(id, card) {
 function selectAll() {
   selectedMods = new Set(allModules.map(m => m.id));
   $$('.mod-card').forEach(c => c.classList.remove('selected'));
-  $('#mod-all').classList.add('selected');
+  $('#mod-all')?.classList.add('selected');
   updateStartBtn();
 }
 
 function updateStartBtn() {
-  $('#start-btn').disabled = selectedMods.size === 0;
+  const btn = $('#start-btn');
+  if (btn) btn.disabled = selectedMods.size === 0;
 }
 
-// ── Quiz start ────────────────────────────────────────────────────────────
+// ── Quiz start ─────────────────────────────────────────────────────────────
 async function startQuiz() {
-  const pool = allQuestions.filter(q => selectedMods.has(q.mod));
-  deck         = shuffle(pool);
+  const pool   = allQuestions.filter(q => selectedMods.has(q.mod));
+  deck         = shuffle(pool);   // always shuffled
   deckPos      = 0;
   round        = 1;
   sessionRight = 0;
@@ -217,11 +188,9 @@ async function startQuiz() {
   renderQuestion();
 }
 
-function getPool() {
-  return allQuestions.filter(q => selectedMods.has(q.mod));
-}
+function getPool() { return allQuestions.filter(q => selectedMods.has(q.mod)); }
 
-// ── Quiz flow ─────────────────────────────────────────────────────────────
+// ── Quiz shell ─────────────────────────────────────────────────────────────
 function restoreQuizShell() {
   $('#page-quiz').innerHTML = `
     <div class="pbar-wrap"><div class="pbar-fill" id="pbar" style="width:0%"></div></div>
@@ -239,18 +208,21 @@ function restoreQuizShell() {
         <button class="btn btn-quit" onclick="quitQuiz()">← Quit</button>
       </div>
     </div>
+    <div class="kbd-hint" id="kbd-hint"></div>
     <div class="session-counter" id="session-score"></div>`;
 }
 
+// ── Render question ────────────────────────────────────────────────────────
 function renderQuestion() {
   answered = false;
   currentQ = deck[deckPos];
   const total = getPool().length;
   const pos   = deckPos + 1;
+  const isTF  = currentQ.type === 'T/F';
 
-  $('#pbar').style.width = Math.round(((pos - 1) / total) * 100) + '%';
+  $('#pbar').style.width    = Math.round(((pos - 1) / total) * 100) + '%';
   $('#q-pos').textContent   = `${pos} / ${total}`;
-  $('#q-mod').textContent   = `Module ${currentQ.mod}${currentQ.mod_name ? ' — ' + currentQ.mod_name : ''}`;
+  $('#q-mod').textContent   = `M${currentQ.mod} · ${currentQ.mod_name || ''}`;
   $('#q-round').textContent = round > 1 ? `Round ${round}` : '';
   $('#q-text').textContent  = currentQ.q;
 
@@ -258,9 +230,11 @@ function renderQuestion() {
   opts.innerHTML = '';
   currentQ.opts.forEach((o, i) => {
     const btn = document.createElement('button');
-    btn.className   = 'opt';
-    btn.dataset.i   = i;
-    btn.innerHTML   = `<span class="opt-ltr">${LETTERS[i]}</span><span>${o}</span>`;
+    btn.className = 'opt';
+    btn.dataset.i = i;
+    // Keyboard label: 1-4 for MCQ, T/F for true-false
+    const lbl = isTF ? (i === 0 ? 'T' : 'F') : (i + 1);
+    btn.innerHTML = `<span class="opt-ltr">${lbl}</span><span>${o}</span>`;
     btn.addEventListener('click', () => pickAnswer(i));
     opts.appendChild(btn);
   });
@@ -271,52 +245,53 @@ function renderQuestion() {
   fb.innerHTML = '';
   $('#btn-next').classList.add('hidden');
 
+  // Keyboard hint
+  $('#kbd-hint').innerHTML = isTF
+    ? 'Press <kbd>T</kbd> True &nbsp;·&nbsp; <kbd>F</kbd> False'
+    : 'Press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> to answer';
+
   $('#session-score').textContent = sessionTotal > 0
-    ? `Session: ${sessionRight}/${sessionTotal} correct`
-    : '';
+    ? `Session: ${sessionRight} / ${sessionTotal} correct` : '';
 }
 
+// ── Answer ────────────────────────────────────────────────────────────────
 async function pickAnswer(chosen) {
   if (answered) return;
   answered = true;
 
-  // Answer check is entirely client-side — questions.json never left the browser
   const correct = (chosen === currentQ.ans);
 
-  // Disable all options
   $$('.opt').forEach(b => b.disabled = true);
-
-  // Style options
   $$('.opt').forEach(btn => {
     const i = parseInt(btn.dataset.i);
-    if (i === currentQ.ans) btn.classList.add('correct');
+    if (i === currentQ.ans)           btn.classList.add('correct');
     else if (i === chosen && !correct) btn.classList.add('wrong');
   });
 
-  // Update session stats
   sessionTotal++;
   if (correct) sessionRight++;
-  if (!sessionByMod[currentQ.mod]) {
+  if (!sessionByMod[currentQ.mod])
     sessionByMod[currentQ.mod] = { right: 0, total: 0, name: currentQ.mod_name };
-  }
   sessionByMod[currentQ.mod].total++;
   if (correct) sessionByMod[currentQ.mod].right++;
 
-  // Feedback
+  // Always show explanation — correct or wrong
+  const expHtml = currentQ.exp
+    ? `<div class="fb-explain">${currentQ.exp}</div>` : '';
+
   const fb = $('#q-fb');
   if (correct) {
     fb.className = 'fb ok';
-    fb.innerHTML = `<div class="fb-label">Correct!</div>`;
+    fb.innerHTML = `<div class="fb-label">Correct!</div>${expHtml}`;
   } else {
     fb.className = 'fb bad';
-    fb.innerHTML = `<div class="fb-label">Not quite — correct answer: ${currentQ.opts[currentQ.ans]}</div>
-      ${currentQ.exp ? `<div class="fb-explain">${currentQ.exp}</div>` : ''}`;
+    fb.innerHTML = `<div class="fb-label">Not quite — correct: <strong>${currentQ.opts[currentQ.ans]}</strong></div>${expHtml}`;
   }
   fb.style.display = 'block';
   $('#btn-next').classList.remove('hidden');
-  $('#session-score').textContent = `Session: ${sessionRight}/${sessionTotal} correct`;
+  $('#kbd-hint').innerHTML = 'Press <kbd>→</kbd> or <kbd>Enter</kbd> for next';
+  $('#session-score').textContent = `Session: ${sessionRight} / ${sessionTotal} correct`;
 
-  // Record to server for stats (fire-and-forget)
   if (sessionId) {
     api('answer', 'POST', {
       session_id:  sessionId,
@@ -327,24 +302,43 @@ async function pickAnswer(chosen) {
   }
 }
 
+// ── Keyboard shortcuts ─────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if ($('#page-quiz').classList.contains('hidden') || !currentQ) return;
+
+  const isTF = currentQ.type === 'T/F';
+
+  if (!answered) {
+    if (isTF) {
+      if (e.key === 't' || e.key === 'T' || e.key === '1') pickAnswer(0);
+      else if (e.key === 'f' || e.key === 'F' || e.key === '2') pickAnswer(1);
+    } else {
+      const n = parseInt(e.key);
+      if (n >= 1 && n <= currentQ.opts.length) pickAnswer(n - 1);
+    }
+  } else {
+    if (e.key === 'ArrowRight' || e.key === 'Enter') nextQuestion();
+  }
+});
+
+// ── Next / Quit ────────────────────────────────────────────────────────────
 function nextQuestion() {
   deckPos++;
   if (deckPos >= deck.length) {
     round++;
-    deck   = shuffle(getPool());
+    deck    = shuffle(getPool());
     deckPos = 0;
   }
   renderQuestion();
 }
 
 async function quitQuiz() {
-  if (sessionId) {
-    await api('end_session', 'POST', { session_id: sessionId });
-  }
+  if (sessionId) await api('end_session', 'POST', { session_id: sessionId });
   showResults();
 }
 
-// ── Results ───────────────────────────────────────────────────────────────
+// ── Results ────────────────────────────────────────────────────────────────
 function showResults() {
   if (sessionTotal === 0) { setView('home'); return; }
 
@@ -354,9 +348,9 @@ function showResults() {
   let grade, gc;
   if (pct >= 90)      { grade = 'Outstanding';   gc = 'var(--green)'; }
   else if (pct >= 80) { grade = 'Very good';      gc = 'var(--green)'; }
-  else if (pct >= 70) { grade = 'Good';           gc = 'var(--text)';  }
+  else if (pct >= 70) { grade = 'Good';           gc = 'var(--text)'; }
   else if (pct >= 60) { grade = 'Passing';        gc = 'var(--amber)'; }
-  else                { grade = 'Keep reviewing'; gc = 'var(--red)';   }
+  else                { grade = 'Keep reviewing'; gc = 'var(--red)'; }
 
   const r    = 44;
   const circ = 2 * Math.PI * r;
@@ -365,7 +359,7 @@ function showResults() {
   const modRows = Object.entries(sessionByMod)
     .map(([id, m]) => `
       <div class="mod-row">
-        <span class="mod-row-name">Module ${id}${m.name ? ': ' + m.name : ''}</span>
+        <span class="mod-row-name">M${id}: ${m.name || ''}</span>
         <span class="mod-row-score">${m.right}/${m.total}</span>
       </div>`).join('');
 
@@ -399,8 +393,7 @@ function showResults() {
 }
 
 async function restartSame() {
-  const pool = allQuestions.filter(q => selectedMods.has(q.mod));
-  deck         = shuffle(pool);
+  deck         = shuffle(getPool());
   deckPos      = 0;
   round        = 1;
   sessionRight = 0;
@@ -415,7 +408,7 @@ async function restartSame() {
   renderQuestion();
 }
 
-// ── Stats ─────────────────────────────────────────────────────────────────
+// ── Stats ──────────────────────────────────────────────────────────────────
 async function loadStats() {
   const page = $('#page-stats');
   page.innerHTML = '<div class="spinner"></div>';
@@ -442,7 +435,7 @@ async function loadStats() {
         const dt  = (() => {
           try {
             return new Date(s.started_at.replace(' ', 'T') + 'Z')
-              .toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+              .toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
           } catch { return s.started_at; }
         })();
         return `<tr>
@@ -453,7 +446,6 @@ async function loadStats() {
         </tr>`;
       }).join('');
 
-  // For weak questions, look up question text from loaded questions
   const weakRows = weak.length === 0
     ? `<div class="text-muted" style="padding:0.75rem 0">Answer ≥ 2 questions to see your weak spots.</div>`
     : weak.map(w => {
@@ -489,31 +481,28 @@ async function loadStats() {
     </div>`;
 }
 
-// ── Boot ──────────────────────────────────────────────────────────────────
+// ── Boot ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  // Nav
   $$('nav button[data-view]').forEach(btn => {
     btn.addEventListener('click', () => setView(btn.dataset.view));
   });
 
-  // Start button
   $('#start-btn').addEventListener('click', startQuiz);
-
-  // File input
   initFileInput();
 
-  // Try to restore from localStorage (so they don't re-pick on every refresh)
+  // Restore from localStorage if available
   try {
     const cached = localStorage.getItem(LS_KEY);
     if (cached) {
       const { filename, questions } = JSON.parse(cached);
       if (Array.isArray(questions) && questions.length > 0) {
         applyQuestions(questions, filename);
-        return; // skip showing file loader
+        return;
       }
     }
   } catch {}
 
-  // No cached questions — show the file loader
-  showFileLoader();
+  // No cache — show file loader
+  $('#file-loader').style.display = '';
+  $('#module-selector').style.display = 'none';
 });

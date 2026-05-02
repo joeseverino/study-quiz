@@ -1,57 +1,51 @@
 /* quiz.js — CS6250 Study Quiz
-   Fully local: questions are read client-side via FileReader and never leave
-   the browser. Stats (sessions + question accuracy) are stored in localStorage. */
+   Multi-deck support. All data stays local in localStorage.
+   JSON deck format: { title, description, questions: [...] }
+   (bare arrays are also accepted for backwards compat) */
 
-const LS_KEY        = 'cs6250_questions';
-const CREATE_KEY    = 'cs6250_created_deck';
-const SESSIONS_KEY  = 'cs6250_sessions';
-const QSTATS_KEY    = 'cs6250_qstats';
-const DECK_STATE_KEY = 'cs6250_deck_state'; // persists in-progress deck across export/import
+// ── Storage key helpers ────────────────────────────────────────────────────
+const REGISTRY_KEY = 'cs6250_registry';   // { [deckId]: DeckMeta }
+const ACTIVE_KEY   = 'cs6250_active';     // active deckId string
+const CREATE_KEY   = 'cs6250_created';    // Question[] for builder
 
-// ── Demo questions ─────────────────────────────────────────────────────────
+function deckQsKey(id)    { return `cs6250_qs_${id}`; }
+function deckStatsKey(id) { return `cs6250_stats_${id}`; }
+
+// ── Demo deck ──────────────────────────────────────────────────────────────
+const DEMO_ID    = 'deck_demo';
+const DEMO_TITLE = 'Georgia Tech Trivia';
+const DEMO_DESC  = '5 questions about Georgia Tech history & culture — a quick warm-up before the real thing.';
 const DEMO_QUESTIONS = [
-  {
-    id: 'demo_1', mod: 0, mod_name: 'Georgia Tech Trivia', type: 'MCQ',
-    q: 'What year was the Georgia Institute of Technology founded?',
-    opts: ['1881', '1885', '1891', '1901'],
-    ans: 1,
-    exp: 'Georgia Tech was founded on October 13, 1885 as the Georgia School of Technology in Atlanta.'
-  },
-  {
-    id: 'demo_2', mod: 0, mod_name: 'Georgia Tech Trivia', type: 'MCQ',
-    q: "What is Georgia Tech's costumed mascot called?",
-    opts: ["Ramblin' Wreck", 'Buzz', 'Sting', 'Yellowjacket Jack'],
-    ans: 1,
-    exp: "Buzz the Yellow Jacket is Georgia Tech's costumed mascot. The Ramblin' Wreck is the famous 1930 Ford Model A Sport Coupe — the official school vehicle."
-  },
-  {
-    id: 'demo_3', mod: 0, mod_name: 'Georgia Tech Trivia', type: 'MCQ',
-    q: 'Georgia Tech set the all-time college football scoring record in 1916 by defeating Cumberland College. What was the final score?',
-    opts: ['150–0', '189–0', '222–0', '256–0'],
-    ans: 2,
-    exp: "On October 7, 1916, Georgia Tech defeated Cumberland College 222–0 — the largest margin of victory in college football history. The game is also notable because Cumberland had essentially no football team that year and fielded a squad of random students."
-  },
-  {
-    id: 'demo_4', mod: 0, mod_name: 'Georgia Tech Trivia', type: 'MCQ',
-    q: 'What is the nickname for the annual football rivalry between Georgia Tech and the University of Georgia?',
-    opts: ['The Battle of Atlanta', 'Clean, Old-Fashioned Hate', 'The Southern Showdown', 'The Peach State Classic'],
-    ans: 1,
-    exp: '"Clean, Old-Fashioned Hate" is the beloved nickname for the Georgia–Georgia Tech rivalry, one of the oldest in college football.'
-  },
-  {
-    id: 'demo_5', mod: 0, mod_name: 'Georgia Tech Trivia', type: 'MCQ',
-    q: "In what Atlanta neighborhood is Georgia Tech's main campus located?",
-    opts: ['Buckhead', 'Downtown', 'Midtown', 'Virginia-Highland'],
-    ans: 2,
-    exp: "Georgia Tech's campus sits in Midtown Atlanta, adjacent to Piedmont Park and the Atlanta BeltLine."
-  }
+  { id:'demo_1', mod:0, mod_name:'Georgia Tech Trivia', type:'MCQ',
+    q:'What year was the Georgia Institute of Technology founded?',
+    opts:['1881','1885','1891','1901'], ans:1,
+    exp:'Georgia Tech was founded on October 13, 1885 as the Georgia School of Technology in Atlanta.' },
+  { id:'demo_2', mod:0, mod_name:'Georgia Tech Trivia', type:'MCQ',
+    q:"What is Georgia Tech's costumed mascot called?",
+    opts:["Ramblin' Wreck",'Buzz','Sting','Yellowjacket Jack'], ans:1,
+    exp:"Buzz the Yellow Jacket is Georgia Tech's costumed mascot. The Ramblin' Wreck is the famous 1930 Ford Model A Sport Coupe — the official school vehicle." },
+  { id:'demo_3', mod:0, mod_name:'Georgia Tech Trivia', type:'MCQ',
+    q:'Georgia Tech set the all-time college football scoring record in 1916. What was the final score against Cumberland College?',
+    opts:['150–0','189–0','222–0','256–0'], ans:2,
+    exp:'On October 7, 1916, Georgia Tech defeated Cumberland College 222–0 — the largest margin of victory in college football history.' },
+  { id:'demo_4', mod:0, mod_name:'Georgia Tech Trivia', type:'MCQ',
+    q:'What is the nickname for the annual football rivalry between Georgia Tech and UGA?',
+    opts:['The Battle of Atlanta','Clean, Old-Fashioned Hate','The Southern Showdown','The Peach State Classic'], ans:1,
+    exp:'"Clean, Old-Fashioned Hate" is the beloved nickname for the Georgia–Georgia Tech rivalry, one of the oldest in college football.' },
+  { id:'demo_5', mod:0, mod_name:'Georgia Tech Trivia', type:'MCQ',
+    q:"In what Atlanta neighborhood is Georgia Tech's main campus located?",
+    opts:['Buckhead','Downtown','Midtown','Virginia-Highland'], ans:2,
+    exp:"Georgia Tech's campus sits in Midtown Atlanta, adjacent to Piedmont Park and the Atlanta BeltLine." }
 ];
 
-// ── State ──────────────────────────────────────────────────────────────────
+// ── Module-level state ─────────────────────────────────────────────────────
 let allQuestions   = [];
 let allModules     = [];
 let selectedMods   = new Set();
 let loadedFileName = '';
+let loadedTitle    = '';
+let loadedDesc     = '';
+let activeDeckId   = null;
 
 let deck         = [];
 let deckPos      = 0;
@@ -62,84 +56,103 @@ let sessionTotal = 0;
 let sessionByMod = {};
 let answered     = false;
 let currentQ     = null;
+let quizActive   = false;
 
 // Edit modal state
-let editView    = 'list'; // 'list' | 'edit' | 'new'
+let editView    = 'list';
 let editCardIdx = null;
-
-// Edit-form option state (shared by "edit card" and "add card to deck" views)
 let editOpts    = [];
 let editCorrect = 0;
 
-// Stats import pending data
-let pendingImportData = null;
-
-// Resume state — true whenever a session is actively in progress
-let quizActive = false;
-
-// Create-deck form state (live across re-renders of the card list)
-let createOpts    = ['', '', '', ''];
+// Create deck form state
+let createOpts    = ['','','',''];
 let createCorrect = 0;
+
+// Pending import confirmation
+let pendingImportData   = null;
+let pendingImportDeckId = null;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const $  = (s, ctx = document) => ctx.querySelector(s);
 const $$ = (s, ctx = document) => [...ctx.querySelectorAll(s)];
 
 function shuffle(arr) {
-  return arr.map(v => ({ v, s: Math.random() }))
-            .sort((a, b) => a.s - b.s)
-            .map(x => x.v);
+  return arr.map(v => ({ v, s: Math.random() })).sort((a, b) => a.s - b.s).map(x => x.v);
 }
 
 function escapeHtml(str) {
   return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── Local stats storage ────────────────────────────────────────────────────
-function getSessions() {
-  try { return JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]'); } catch { return []; }
+// ── Registry: deck metadata ────────────────────────────────────────────────
+// { [deckId]: { id, title, description, filename, questionCount, addedAt } }
+function getRegistry() {
+  try { return JSON.parse(localStorage.getItem(REGISTRY_KEY) || '{}'); } catch { return {}; }
 }
+function saveRegistry(r) {
+  try { localStorage.setItem(REGISTRY_KEY, JSON.stringify(r)); } catch {}
+}
+function upsertDeckMeta(id, patch) {
+  const r = getRegistry();
+  r[id] = { ...r[id], ...patch, id };
+  saveRegistry(r);
+}
+function deleteDeckMeta(id) {
+  const r = getRegistry(); delete r[id]; saveRegistry(r);
+}
+
+// ── Per-deck questions ─────────────────────────────────────────────────────
+function getDeckQuestions(id) {
+  try { const raw = localStorage.getItem(deckQsKey(id)); return raw ? JSON.parse(raw) : []; }
+  catch { return []; }
+}
+function saveDeckQuestions(id, qs) {
+  try { localStorage.setItem(deckQsKey(id), JSON.stringify(qs)); } catch {}
+}
+
+// ── Per-deck stats: { sessions, qstats, deckState } ───────────────────────
+function getDeckStats(id) {
+  try { const raw = localStorage.getItem(deckStatsKey(id)); return raw ? JSON.parse(raw) : { sessions:[], qstats:{}, deckState:null }; }
+  catch { return { sessions:[], qstats:{}, deckState:null }; }
+}
+function saveDeckStats(id, obj) {
+  try { localStorage.setItem(deckStatsKey(id), JSON.stringify(obj)); } catch {}
+}
+
+// ── Session / qstats — scoped to active deck ──────────────────────────────
+function getSessions() { return activeDeckId ? (getDeckStats(activeDeckId).sessions || []) : []; }
 function saveSessions(s) {
-  try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(s)); } catch {}
+  if (!activeDeckId) return;
+  const obj = getDeckStats(activeDeckId); obj.sessions = s; saveDeckStats(activeDeckId, obj);
 }
-function getQStats() {
-  try { return JSON.parse(localStorage.getItem(QSTATS_KEY) || '{}'); } catch { return {}; }
-}
+function getQStats()  { return activeDeckId ? (getDeckStats(activeDeckId).qstats || {}) : {}; }
 function saveQStats(q) {
-  try { localStorage.setItem(QSTATS_KEY, JSON.stringify(q)); } catch {}
+  if (!activeDeckId) return;
+  const obj = getDeckStats(activeDeckId); obj.qstats = q; saveDeckStats(activeDeckId, obj);
 }
 
 function localStartSession(modules) {
-  const session = { id: Date.now(), modules, correct: 0, total: 0,
+  const session = { id: Date.now(), modules, correct:0, total:0,
                     started_at: new Date().toISOString(), ended_at: null };
-  const all = getSessions();
-  all.push(session);
-  saveSessions(all);
+  const all = getSessions(); all.push(session); saveSessions(all);
   return session.id;
 }
 
-function localRecordAnswer(sessionId, questionId, moduleId, correct, questionObj) {
+function localRecordAnswer(sid, questionId, moduleId, correct, questionObj) {
   const sessions = getSessions();
-  const s = sessions.find(x => x.id === sessionId);
+  const s = sessions.find(x => x.id === sid);
   if (s) { s.total++; if (correct) s.correct++; }
   saveSessions(sessions);
 
   const qstats = getQStats();
   if (!qstats[questionId]) {
     const card = questionObj ? {
-      q:        questionObj.q    || null,
-      opts:     questionObj.opts || null,
-      ans:      questionObj.ans  ?? null,
-      mod_name: questionObj.mod_name || null,
-      type:     questionObj.type || 'MCQ',
-      exp:      questionObj.exp  || null,
+      q: questionObj.q||null, opts: questionObj.opts||null, ans: questionObj.ans??null,
+      mod_name: questionObj.mod_name||null, type: questionObj.type||'MCQ', exp: questionObj.exp||null,
     } : null;
-    qstats[questionId] = { question_id: questionId, module_id: moduleId, card,
-                            total_attempts: 0, correct_count: 0, last_seen: null };
+    qstats[questionId] = { question_id:questionId, module_id:moduleId, card,
+                            total_attempts:0, correct_count:0, last_seen:null };
   }
   qstats[questionId].total_attempts++;
   if (correct) qstats[questionId].correct_count++;
@@ -157,78 +170,58 @@ function localEndSession(id) {
 function localGetStats() {
   const sessions = getSessions().filter(s => s.ended_at !== null);
   const qstats   = getQStats();
-
   const totals = {
     total_sessions: sessions.length,
-    total_answered: sessions.reduce((n, s) => n + s.total,   0),
-    total_correct:  sessions.reduce((n, s) => n + s.correct, 0),
+    total_answered: sessions.reduce((n,s) => n + s.total,   0),
+    total_correct:  sessions.reduce((n,s) => n + s.correct, 0),
   };
-
   const recent = [...sessions]
-    .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
+    .sort((a,b) => new Date(b.started_at) - new Date(a.started_at))
     .slice(0, 20)
     .map(s => ({ ...s, modules: JSON.stringify(s.modules) }));
-
   const weak = Object.values(qstats)
     .filter(q => q.total_attempts >= 2)
     .map(q => ({ ...q,
       wrong_count: q.total_attempts - q.correct_count,
       pct: Math.round(100 * q.correct_count / q.total_attempts * 10) / 10,
     }))
-    .sort((a, b) => a.pct - b.pct)
+    .sort((a,b) => a.pct - b.pct)
     .slice(0, 10);
-
   return { totals, sessions: recent, weak };
 }
 
 function localResetStats() {
-  try {
-    localStorage.removeItem(SESSIONS_KEY);
-    localStorage.removeItem(QSTATS_KEY);
-    localStorage.removeItem(DECK_STATE_KEY);
-  } catch {}
-  // Also wipe the live session so resume card clears
-  if (sessionId) { try { /* already wiped from storage */ } catch {} }
-  sessionId    = null;
-  quizActive   = false;
-  deck         = [];
-  deckPos      = 0;
-  sessionRight = 0;
-  sessionTotal = 0;
-  sessionByMod = {};
+  if (!activeDeckId) return;
+  const obj = getDeckStats(activeDeckId);
+  obj.sessions = []; obj.qstats = {}; obj.deckState = null;
+  saveDeckStats(activeDeckId, obj);
+  sessionId    = null; quizActive   = false;
+  deck         = []; deckPos      = 0;
+  sessionRight = 0; sessionTotal = 0; sessionByMod = {};
 }
 
-// ── Deck-state save/restore (for export→import cross-device resume) ────────
+// ── Deck state save / restore ─────────────────────────────────────────────
 function saveDeckState() {
-  if (!quizActive || deck.length === 0) return;
-  try {
-    const state = {
-      deckIds:       deck.map(q => q.id),
-      deckPos,
-      round,
-      sessionRight,
-      sessionTotal,
-      sessionByMod,
-      selectedModIds: [...selectedMods],
-      loadedFileName,
-    };
-    localStorage.setItem(DECK_STATE_KEY, JSON.stringify(state));
-  } catch {}
+  if (!quizActive || deck.length === 0 || !activeDeckId) return;
+  const state = {
+    deckIds: deck.map(q => q.id), deckPos, round,
+    sessionRight, sessionTotal, sessionByMod,
+    selectedModIds: [...selectedMods],
+  };
+  const obj = getDeckStats(activeDeckId);
+  obj.deckState = state;
+  saveDeckStats(activeDeckId, obj);
 }
 
 function tryRestoreDeckState() {
+  if (!activeDeckId || allQuestions.length === 0) return;
   try {
-    const raw = localStorage.getItem(DECK_STATE_KEY);
-    if (!raw || allQuestions.length === 0) return;
-    const state = JSON.parse(raw);
-    if (!state || !Array.isArray(state.deckIds) || state.deckIds.length === 0) return;
+    const obj   = getDeckStats(activeDeckId);
+    const state = obj.deckState;
+    if (!state || !Array.isArray(state.deckIds) || !state.deckIds.length) return;
 
-    // Rebuild deck from saved question IDs
-    const qMap = {};
-    allQuestions.forEach(q => { qMap[q.id] = q; });
+    const qMap = {}; allQuestions.forEach(q => { qMap[q.id] = q; });
     const restoredDeck = state.deckIds.map(id => qMap[id]).filter(Boolean);
-
-    // Require ≥90% match — silently skip if questions don't match
     if (restoredDeck.length < Math.floor(state.deckIds.length * 0.9)) return;
 
     deck         = restoredDeck;
@@ -239,15 +232,57 @@ function tryRestoreDeckState() {
     sessionByMod = state.sessionByMod || {};
     if (Array.isArray(state.selectedModIds)) selectedMods = new Set(state.selectedModIds);
 
-    // Start a fresh session on this device to track continued answers
     sessionId  = localStartSession([...selectedMods]);
     quizActive = true;
 
-    localStorage.removeItem(DECK_STATE_KEY);
+    obj.deckState = null;
+    saveDeckStats(activeDeckId, obj);
     updateResumeCard();
-  } catch {
-    // Silently ignore corrupt state
+  } catch {}
+}
+
+// ── Active deck management ─────────────────────────────────────────────────
+function setActiveDeckId(id) {
+  activeDeckId = id;
+  try { id ? localStorage.setItem(ACTIVE_KEY, id) : localStorage.removeItem(ACTIVE_KEY); } catch {}
+}
+
+// Load registered deck into memory without starting quiz
+function loadDeckIntoMemory(deckId) {
+  const meta = getRegistry()[deckId];
+  if (!meta) return false;
+  const questions = getDeckQuestions(deckId);
+  if (!questions.length) return false;
+
+  // Save + end current session if switching decks
+  if (activeDeckId && activeDeckId !== deckId) {
+    if (quizActive) saveDeckState();
+    if (sessionId)  { localEndSession(sessionId); sessionId = null; }
+    quizActive = false; deck = []; deckPos = 0;
+    sessionRight = 0; sessionTotal = 0; sessionByMod = {};
   }
+
+  setActiveDeckId(deckId);
+  allQuestions   = questions;
+  loadedFileName = meta.filename    || '';
+  loadedTitle    = meta.title       || '';
+  loadedDesc     = meta.description || '';
+
+  const modMap = {};
+  questions.forEach(q => {
+    if (!modMap[q.mod]) modMap[q.mod] = { id:q.mod, name:q.mod_name||`Module ${q.mod}`, count:0 };
+    modMap[q.mod].count++;
+  });
+  allModules   = Object.values(modMap).sort((a,b) => a.id - b.id);
+  selectedMods = new Set(allModules.map(m => m.id));
+  return true;
+}
+
+// "Study →" button on a deck card
+function studyDeck(deckId) {
+  if (!loadDeckIntoMemory(deckId)) return;
+  tryRestoreDeckState();
+  if (quizActive) { setView('quiz'); } else { openModal('upload'); }
 }
 
 // ── View switching ─────────────────────────────────────────────────────────
@@ -258,7 +293,7 @@ function setView(v) {
   $('#page-stats').classList.toggle('hidden', v !== 'stats');
   document.body.classList.toggle('view-home', v === 'home');
   if (v === 'stats') loadStats();
-  if (v === 'home')  updateResumeCard();
+  if (v === 'home')  { updateResumeCard(); renderDeckSwitcher(); }
 }
 
 function updateResumeCard() {
@@ -274,253 +309,401 @@ function updateResumeCard() {
   }
 }
 
-function resumeSession() {
-  setView('quiz');
+function resumeSession() { setView('quiz'); }
+
+// ── Deck Switcher ──────────────────────────────────────────────────────────
+function renderDeckSwitcher() {
+  const switcherEl = document.getElementById('deck-switcher');
+  const listEl     = document.getElementById('deck-list');
+  const addLabel   = document.getElementById('add-deck-label');
+  if (!switcherEl || !listEl) return;
+
+  const reg = getRegistry();
+  const ids = Object.keys(reg).sort((a,b) => (reg[b].addedAt||0) - (reg[a].addedAt||0));
+
+  if (ids.length === 0) {
+    switcherEl.classList.add('hidden');
+    if (addLabel) addLabel.classList.add('hidden');
+    return;
+  }
+
+  switcherEl.classList.remove('hidden');
+  if (addLabel) addLabel.classList.remove('hidden');
+  listEl.innerHTML = '';
+
+  ids.forEach(id => {
+    const meta     = reg[id];
+    const stats    = getDeckStats(id);
+    const sessions = (stats.sessions || []).filter(s => s.ended_at);
+    const hasState = !!(stats.deckState);
+    const isActive = id === activeDeckId;
+
+    const icon = id === DEMO_ID ? '🐝' : id === 'deck_created' ? '✏️' : '📚';
+
+    const stateTag = hasState
+      ? `<span class="deck-state-badge">▶ Q${(stats.deckState.deckPos||0)+1} / ${stats.deckState.deckIds?.length||'?'}</span>`
+      : '';
+    const sessionTag = sessions.length > 0
+      ? `${sessions.length} session${sessions.length !== 1 ? 's' : ''}`
+      : '';
+
+    const card = document.createElement('div');
+    card.className = 'deck-entry' + (isActive ? ' is-active' : '');
+    card.innerHTML = `
+      <div class="deck-entry-left">
+        <div class="deck-entry-icon">${icon}</div>
+        <div class="deck-entry-info">
+          <div class="deck-entry-title">${escapeHtml(meta.title || meta.filename || 'Untitled')}</div>
+          ${meta.description ? `<div class="deck-entry-desc">${escapeHtml(meta.description)}</div>` : ''}
+          <div class="deck-entry-meta">
+            ${meta.questionCount || '?'} questions${sessionTag ? ' · ' + sessionTag : ''}${stateTag ? ' · ' + stateTag : ''}
+          </div>
+        </div>
+      </div>
+      <div class="deck-entry-right">
+        <button class="btn btn-primary deck-study-btn" onclick="studyDeck('${id}')">Study →</button>
+        <div class="deck-entry-actions">
+          <button class="btn btn-sm" onclick="exportDeckState('${id}')" title="Export save state">↓ Export state</button>
+          <button class="btn btn-sm" onclick="importDeckState('${id}')" title="Import save state">↑ Import state</button>
+          <button class="btn btn-sm deck-remove-btn" onclick="confirmRemoveDeck('${id}')" title="Remove deck">✕</button>
+        </div>
+      </div>`;
+    listEl.appendChild(card);
+  });
+}
+
+function confirmRemoveDeck(id) {
+  const meta = getRegistry()[id];
+  const name = meta?.title || meta?.filename || 'this deck';
+  if (!confirm(`Remove "${name}" from your library?\n\nStats will be deleted. The original file won't be affected.`)) return;
+  removeDeck(id);
+}
+
+function removeDeck(id) {
+  if (id === activeDeckId) {
+    if (quizActive && sessionId) { localEndSession(sessionId); }
+    sessionId    = null; quizActive   = false;
+    deck         = []; deckPos      = 0;
+    allQuestions = []; allModules   = [];
+    selectedMods = new Set();
+    loadedTitle  = ''; loadedDesc   = ''; loadedFileName = '';
+    setActiveDeckId(null);
+    updateResumeCard();
+  }
+  deleteDeckMeta(id);
+  try { localStorage.removeItem(deckQsKey(id));    } catch {}
+  try { localStorage.removeItem(deckStatsKey(id)); } catch {}
+  renderDeckSwitcher();
+  updateMenuStates();
+}
+
+// ── Per-deck export / import save state ───────────────────────────────────
+function exportDeckState(deckId) {
+  const meta = getRegistry()[deckId];
+  if (!meta) return;
+  const qs    = getDeckQuestions(deckId);
+  const stats = getDeckStats(deckId);
+
+  // Capture live session position if this is the active deck in-progress
+  let deckState = stats.deckState;
+  if (deckId === activeDeckId && quizActive && deck.length > 0) {
+    deckState = {
+      deckIds: deck.map(q => q.id), deckPos, round,
+      sessionRight, sessionTotal, sessionByMod,
+      selectedModIds: [...selectedMods],
+    };
+  }
+
+  const payload = {
+    version:     4,
+    exported_at: new Date().toISOString(),
+    deckId,
+    title:       meta.title       || '',
+    description: meta.description || '',
+    filename:    meta.filename    || '',
+    sessions:    stats.sessions   || [],
+    qstats:      stats.qstats     || {},
+    deckState,
+    questions:   qs,
+  };
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  const name = (meta.title || meta.filename || 'deck').replace(/[^a-z0-9]/gi,'_').toLowerCase();
+  a.download = `save_${name}_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importDeckState(deckId) {
+  const input    = document.createElement('input');
+  input.type     = 'file';
+  input.accept   = '.json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader  = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!Array.isArray(data.sessions) || typeof data.qstats !== 'object') {
+          throw new Error('Not a valid save-state file.');
+        }
+        pendingImportData   = data;
+        pendingImportDeckId = deckId;
+        applyImportedState();
+      } catch (err) { alert('Could not import: ' + err.message); }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function applyImportedState() {
+  if (!pendingImportData) return;
+  const data   = pendingImportData;
+  const deckId = pendingImportDeckId;
+
+  // Close any open sessions in the imported data
+  const importedSessions = (data.sessions || []).map(s =>
+    s.ended_at ? s : { ...s, ended_at: new Date().toISOString() }
+  );
+
+  // If save file contains questions, register the deck (self-contained import)
+  if (Array.isArray(data.questions) && data.questions.length) {
+    const id = deckId || data.deckId || `deck_${Date.now()}`;
+    upsertDeckMeta(id, {
+      title:         data.title       || '',
+      description:   data.description || '',
+      filename:      data.filename    || '',
+      questionCount: data.questions.length,
+      addedAt:       getRegistry()[id]?.addedAt || Date.now(),
+    });
+    saveDeckQuestions(id, data.questions);
+    pendingImportDeckId = id;
+  }
+
+  const targetId = pendingImportDeckId;
+  if (!targetId) { alert('Could not determine which deck to import into.'); return; }
+
+  const obj = getDeckStats(targetId);
+  obj.sessions  = importedSessions;
+  obj.qstats    = data.qstats || {};
+  obj.deckState = data.deckState || null;
+  saveDeckStats(targetId, obj);
+
+  // If importing into the active deck, reload questions and try to restore position
+  if (targetId === activeDeckId) {
+    allQuestions = getDeckQuestions(targetId);
+    tryRestoreDeckState();
+  }
+
+  pendingImportData   = null;
+  pendingImportDeckId = null;
+  renderDeckSwitcher();
+  updateResumeCard();
+  if (!$('#page-stats').classList.contains('hidden')) loadStats();
+  alert('Save state imported successfully!');
 }
 
 // ── Modal system ───────────────────────────────────────────────────────────
 function openModal(type) {
-  const overlay = $('#modal-overlay');
-  overlay.classList.remove('hidden');
+  $('#modal-overlay').classList.remove('hidden');
   document.body.style.overflow = 'hidden';
-
-  const titles = { upload: 'Upload deck', create: 'Create deck', demo: 'Demo', edit: 'Edit deck' };
+  const titles = { upload:'Load deck', create:'Create deck', demo:'Demo', edit:'Edit deck' };
   $('#modal-title').textContent = titles[type] || '';
-
-  if (type === 'upload')      renderUploadModal();
+  if      (type === 'upload') renderUploadModal();
   else if (type === 'create') renderCreateModal();
   else if (type === 'demo')   renderDemoModal();
   else if (type === 'edit')   renderEditModal();
 }
-
 function closeModal() {
   $('#modal-overlay').classList.add('hidden');
   document.body.style.overflow = '';
 }
-
 function handleOverlayClick(e) {
   if (e.target.id === 'modal-overlay') closeModal();
 }
 
 // ── Upload modal ───────────────────────────────────────────────────────────
 function renderUploadModal() {
-  if (allQuestions.length > 0) {
-    renderModalModuleSelector();
-    return;
-  }
+  if (allQuestions.length > 0) { renderModalModuleSelector(); return; }
 
-  const content = $('#modal-content');
-  content.innerHTML = `
+  $('#modal-content').innerHTML = `
     <div id="drop-zone">
       <div class="dz-icon">📂</div>
       <div class="dz-title">Drop your questions.json here</div>
-      <div class="dz-sub">or click to browse your computer</div>
+      <div class="dz-sub">or click to browse</div>
       <input type="file" id="modal-file-input" accept=".json,application/json" style="display:none">
       <button class="btn btn-primary btn-sm" onclick="$('#modal-file-input').click()">Choose file</button>
       <p id="modal-file-error" style="color:var(--red);font-size:12px;margin-top:10px;display:none;text-align:center"></p>
     </div>
     <p style="font-size:11px;color:var(--text-3);text-align:center;margin-top:10px">
-      Read locally in your browser — nothing is uploaded to the server.
+      Read locally — nothing is uploaded to the server.
     </p>`;
 
   const dz    = $('#drop-zone');
   const input = $('#modal-file-input');
-
-  dz.addEventListener('click', e => { if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') input.click(); });
+  dz.addEventListener('click', e => {
+    if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') input.click();
+  });
   dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag-over'); });
   dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
   dz.addEventListener('drop', e => {
-    e.preventDefault();
-    dz.classList.remove('drag-over');
-    const file = e.dataTransfer.files[0];
-    if (file) readJsonFile(file);
+    e.preventDefault(); dz.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) readJsonFile(e.dataTransfer.files[0]);
   });
   input.addEventListener('change', () => {
-    if (input.files[0]) readJsonFile(input.files[0]);
-    input.value = '';
+    if (input.files[0]) readJsonFile(input.files[0]); input.value = '';
   });
 }
 
 function readJsonFile(file) {
-  const reader = new FileReader();
-  reader.onload  = e => parseQuestions(e.target.result, file.name);
+  const reader   = new FileReader();
+  reader.onload  = e => parseAndRegisterDeck(e.target.result, file.name);
   reader.onerror = () => showModalError('Could not read file.');
   reader.readAsText(file);
 }
 
-function parseQuestions(text, filename) {
-  let data;
-  try { data = JSON.parse(text); }
+// Handles both bare array and {title,description,questions} formats
+function parseAndRegisterDeck(text, filename) {
+  let parsed;
+  try { parsed = JSON.parse(text); }
   catch { showModalError('Invalid JSON — could not parse the file.'); return; }
 
-  if (!Array.isArray(data) || !data.length) {
-    showModalError('File must be a non-empty JSON array.'); return;
+  let title = '', description = '', questions;
+  if (Array.isArray(parsed)) {
+    questions = parsed;
+  } else if (parsed && Array.isArray(parsed.questions)) {
+    title       = parsed.title       || '';
+    description = parsed.description || '';
+    questions   = parsed.questions;
+  } else {
+    showModalError('File must be a JSON array or { title, description, questions } object.'); return;
   }
-  const s = data[0];
+
+  if (!questions.length) { showModalError('No questions found in this file.'); return; }
+  const s = questions[0];
   if (!s.id || !s.q || !Array.isArray(s.opts) || s.ans === undefined) {
-    showModalError('Questions must have id, q, opts (array), and ans fields.'); return;
+    showModalError('Questions need id, q, opts[], and ans fields.'); return;
   }
 
-  try { localStorage.setItem(LS_KEY, JSON.stringify({ filename, questions: data })); }
-  catch { /* storage full — fine */ }
-
-  applyQuestions(data, filename);
+  registerAndLoadDeck({ title, description, filename, questions });
 }
 
-function applyQuestions(data, filename) {
-  // Loading new questions wipes any active session
-  if (quizActive && sessionId) {
-    localEndSession(sessionId);
-    sessionId = null;
-  }
-  quizActive   = false;
-  deck         = [];
-  deckPos      = 0;
-  sessionRight = 0;
-  sessionTotal = 0;
-  sessionByMod = {};
+// Register in library, set as active, show module selector
+function registerAndLoadDeck({ id, title, description, filename, questions }) {
+  const deckId = id || `deck_${Date.now()}`;
 
-  allQuestions   = data;
-  loadedFileName = filename || 'questions.json';
+  // End current session if switching decks
+  if (activeDeckId && activeDeckId !== deckId) {
+    if (quizActive) saveDeckState();
+    if (sessionId)  { localEndSession(sessionId); sessionId = null; }
+    quizActive = false; deck = []; deckPos = 0;
+    sessionRight = 0; sessionTotal = 0; sessionByMod = {};
+  }
+
+  upsertDeckMeta(deckId, {
+    title, description, filename,
+    questionCount: questions.length,
+    addedAt: getRegistry()[deckId]?.addedAt || Date.now(),
+  });
+  saveDeckQuestions(deckId, questions);
+  setActiveDeckId(deckId);
+
+  allQuestions   = questions;
+  loadedFileName = filename    || '';
+  loadedTitle    = title       || '';
+  loadedDesc     = description || '';
 
   const modMap = {};
-  data.forEach(q => {
-    if (!modMap[q.mod]) modMap[q.mod] = { id: q.mod, name: q.mod_name || `Module ${q.mod}`, count: 0 };
+  questions.forEach(q => {
+    if (!modMap[q.mod]) modMap[q.mod] = { id:q.mod, name:q.mod_name||`Module ${q.mod}`, count:0 };
     modMap[q.mod].count++;
   });
-  allModules = Object.values(modMap).sort((a, b) => a.id - b.id);
+  allModules   = Object.values(modMap).sort((a,b) => a.id - b.id);
+  selectedMods = new Set(allModules.map(m => m.id));
 
-  updateDeckCard();
-
-  // Try to restore a previously saved/imported deck position
-  tryRestoreDeckState();
-
-  // If the modal is open, transition to module selector
-  if (!$('#modal-overlay').classList.contains('hidden')) {
-    renderModalModuleSelector();
-  }
+  updateMenuStates();
+  renderDeckSwitcher();
+  if (!$('#modal-overlay').classList.contains('hidden')) renderModalModuleSelector();
 }
-
-// ── Deck card (home screen indicator for loaded deck) ──────────────────────
-function updateDeckCard() {
-  const card  = document.getElementById('deck-card');
-  const title = document.getElementById('deck-title');
-  const sub   = document.getElementById('deck-sub');
-  if (!card) return;
-
-  if (allQuestions.length > 0) {
-    if (title) title.textContent = loadedFileName === 'demo' ? 'Demo deck' : loadedFileName;
-    if (sub)   sub.textContent   = `${allQuestions.length} questions`;
-    card.classList.remove('hidden');
-  } else {
-    card.classList.add('hidden');
-  }
-
-  // Keep the upload mode-card sub consistent
-  const uploadSub = document.getElementById('upload-sub');
-  if (uploadSub) {
-    uploadSub.innerHTML = allQuestions.length > 0
-      ? 'Change deck'
-      : 'Drop a .json file or click to browse';
-  }
-}
-
-// Legacy alias used in a few places
-function updateUploadCard() { updateDeckCard(); }
 
 function showModalError(msg) {
   const el = $('#modal-file-error');
   if (el) { el.textContent = msg; el.style.display = ''; }
 }
 
+// Export the deck JSON (with title/description)
 function exportLoadedDeck() {
   if (!allQuestions.length) return;
-  const blob = new Blob([JSON.stringify(allQuestions, null, 2)], { type: 'application/json' });
+  const payload = {
+    title:       loadedTitle || loadedFileName || 'My Deck',
+    description: loadedDesc  || '',
+    questions:   allQuestions,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
   let name   = loadedFileName || 'questions.json';
-  if (name === 'demo') name = 'my-deck.json';
+  if (name === 'demo') name = 'georgia-tech-trivia.json';
   if (!name.endsWith('.json')) name += '.json';
   a.download = name;
   a.click();
   URL.revokeObjectURL(url);
 }
 
+// After editing cards: persist changes back to the deck registry
+function syncEditedDeckToStorage() {
+  if (!activeDeckId) return;
+  saveDeckQuestions(activeDeckId, allQuestions);
+  upsertDeckMeta(activeDeckId, { questionCount: allQuestions.length });
+  renderDeckSwitcher();
+}
+
+// ── Module selector ────────────────────────────────────────────────────────
 function renderModalModuleSelector() {
-  const content = $('#modal-content');
-  content.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-      <div>
-        <span style="font-size:14px;font-weight:500;color:var(--text)">${escapeHtml(loadedFileName)}</span>
-        <span style="font-size:13px;color:var(--text-3);margin-left:6px">· ${allQuestions.length} questions</span>
-      </div>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-sm" onclick="exportLoadedDeck()" title="Download as JSON">↓ Export</button>
-        <button class="btn btn-sm" onclick="clearQuestions()">Change file</button>
-      </div>
+  const displayName = loadedTitle || loadedFileName || 'Deck';
+  $('#modal-content').innerHTML = `
+    <div style="margin-bottom:16px">
+      <div style="font-size:15px;font-weight:600;color:var(--text)">${escapeHtml(displayName)}</div>
+      ${loadedDesc ? `<div style="font-size:13px;color:var(--text-3);margin-top:3px">${escapeHtml(loadedDesc)}</div>` : ''}
+      <div style="font-size:12px;color:var(--text-3);margin-top:4px">${allQuestions.length} questions</div>
     </div>
     <p style="font-size:13px;color:var(--text-3);margin-bottom:14px">Pick modules to study. Questions are randomized every session.</p>
     <div class="mod-grid" id="mod-grid"></div>
     <button id="start-btn" class="btn btn-primary btn-block mt-1" onclick="modalStartQuiz()" disabled>Start →</button>`;
-
   renderModuleGrid();
   selectAll();
 }
 
-function clearQuestions() {
-  // End any active session when deck is cleared
-  if (sessionId) { localEndSession(sessionId); sessionId = null; }
-  localStorage.removeItem(DECK_STATE_KEY);
-  quizActive     = false;
-  deck           = [];
-  deckPos        = 0;
-  sessionRight   = 0;
-  sessionTotal   = 0;
-  sessionByMod   = {};
-  allQuestions   = [];
-  allModules     = [];
-  selectedMods   = new Set();
-  loadedFileName = '';
-  try { localStorage.removeItem(LS_KEY); } catch {}
-  updateDeckCard();
-  updateResumeCard();
-  renderUploadModal();
-}
+function modalStartQuiz() { closeModal(); startQuiz(); }
 
-function modalStartQuiz() {
-  closeModal();
-  startQuiz();
-}
-
-// ── Module selector ────────────────────────────────────────────────────────
 function renderModuleGrid() {
   const grid = $('#mod-grid');
   grid.innerHTML = '';
-
   allModules.forEach(m => {
     const btn = document.createElement('button');
-    btn.className = 'mod-card';
+    btn.className   = 'mod-card';
     btn.dataset.modId = m.id;
-    btn.innerHTML = `<div class="mod-num">Module ${m.id}</div>
-                     <div class="mod-name">${escapeHtml(m.name)}</div>
-                     <div class="mod-cnt">${m.count} questions</div>`;
+    btn.innerHTML   = `<div class="mod-num">Module ${m.id}</div>
+                       <div class="mod-name">${escapeHtml(m.name)}</div>
+                       <div class="mod-cnt">${m.count} questions</div>`;
     btn.addEventListener('click', () => toggleMod(m.id, btn));
     grid.appendChild(btn);
   });
-
   const all = document.createElement('button');
-  all.className = 'mod-card';
-  all.id = 'mod-all';
-  all.innerHTML = `<div class="mod-num" style="color:var(--text-2)">All</div>
-                   <div class="mod-name">All modules</div>
-                   <div class="mod-cnt">${allQuestions.length} questions total</div>`;
+  all.className = 'mod-card'; all.id = 'mod-all';
+  all.innerHTML   = `<div class="mod-num" style="color:var(--text-2)">All</div>
+                     <div class="mod-name">All modules</div>
+                     <div class="mod-cnt">${allQuestions.length} questions total</div>`;
   all.addEventListener('click', selectAll);
   grid.appendChild(all);
-
   updateStartBtn();
 }
-
 function toggleMod(id, card) {
   $('#mod-all')?.classList.remove('selected');
   card.classList.toggle('selected');
@@ -528,53 +711,178 @@ function toggleMod(id, card) {
   else selectedMods.delete(id);
   updateStartBtn();
 }
-
 function selectAll() {
   selectedMods = new Set(allModules.map(m => m.id));
   $$('.mod-card').forEach(c => c.classList.remove('selected'));
   $('#mod-all')?.classList.add('selected');
   updateStartBtn();
 }
-
 function updateStartBtn() {
   const btn = $('#start-btn');
   if (btn) btn.disabled = selectedMods.size === 0;
 }
 
-// ── Create modal ───────────────────────────────────────────────────────────
-function getCreatedDeck() {
-  try { return JSON.parse(localStorage.getItem(CREATE_KEY) || '[]'); }
-  catch { return []; }
+// ── Demo modal ─────────────────────────────────────────────────────────────
+function renderDemoModal() {
+  $('#modal-content').innerHTML = `
+    <div style="text-align:center;padding:1.5rem 0 0.5rem">
+      <div style="font-size:44px;margin-bottom:14px">🐝</div>
+      <div style="font-size:17px;font-weight:600;color:var(--text);margin-bottom:6px">${escapeHtml(DEMO_TITLE)}</div>
+      <div style="font-size:13px;color:var(--text-3);margin-bottom:28px">${escapeHtml(DEMO_DESC)}</div>
+      <button class="btn btn-primary" style="padding:10px 28px;font-size:15px" onclick="startDemo()">Load demo →</button>
+    </div>`;
 }
 
-function saveCreatedDeck(deck) {
-  try { localStorage.setItem(CREATE_KEY, JSON.stringify(deck)); } catch {}
+function startDemo() {
+  registerAndLoadDeck({ id:DEMO_ID, title:DEMO_TITLE, description:DEMO_DESC,
+                        filename:'demo', questions:DEMO_QUESTIONS });
+}
+
+// ── Create deck ────────────────────────────────────────────────────────────
+function getCreatedDeck() {
+  try { return JSON.parse(localStorage.getItem(CREATE_KEY) || '[]'); } catch { return []; }
+}
+function saveCreatedDeck(d) {
+  try { localStorage.setItem(CREATE_KEY, JSON.stringify(d)); } catch {}
   updateCreateCard();
 }
-
 function updateCreateCard() {
   const sub = $('#create-sub');
   if (!sub) return;
-  const deck = getCreatedDeck();
-  sub.textContent = deck.length > 0
-    ? `${deck.length} card${deck.length !== 1 ? 's' : ''} saved`
-    : 'Build your own deck';
+  const d = getCreatedDeck();
+  sub.textContent = d.length > 0 ? `${d.length} card${d.length !== 1 ? 's' : ''} saved` : 'Build your own deck';
+}
+
+function studyCreatedDeck() {
+  const d = getCreatedDeck();
+  if (!d.length) return;
+  registerAndLoadDeck({
+    id: 'deck_created', title: 'My Deck', description: 'Custom-built card deck.',
+    filename: 'my-deck.json', questions: d,
+  });
 }
 
 // ── Create-deck form helpers ───────────────────────────────────────────────
-function resetCreateForm() {
-  createOpts    = ['', '', '', ''];
-  createCorrect = 0;
-}
+function resetCreateForm() { createOpts = ['','','',''];  createCorrect = 0; }
 
-// Read current input values into createOpts without losing other state
 function syncCreateOpts() {
   document.querySelectorAll('.create-opt-input').forEach((inp, i) => {
     if (i < createOpts.length) createOpts[i] = inp.value;
   });
 }
 
-// ── Edit-form option-row helpers (shared by edit & add-card views) ─────────
+function renderCreateOptionRows() {
+  const wrap = document.getElementById('create-opts-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  createOpts.forEach((val, i) => {
+    const row    = document.createElement('div');
+    row.className = 'cr-opt-row' + (createCorrect === i ? ' is-correct' : '');
+    const numBtn = document.createElement('button');
+    numBtn.type = 'button'; numBtn.className = 'cr-opt-num' + (createCorrect === i ? ' correct' : '');
+    numBtn.title = 'Mark as correct'; numBtn.textContent = i + 1;
+    numBtn.addEventListener('click', () => { syncCreateOpts(); createCorrect = i; renderCreateOptionRows(); });
+    const inp = document.createElement('input');
+    inp.className = 'create-opt-input'; inp.id = `co-${i}`; inp.value = val; inp.placeholder = `Option ${i + 1}`;
+    row.appendChild(numBtn); row.appendChild(inp);
+    if (createOpts.length > 2) {
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'cr-opt-del'; del.title = 'Remove';
+      del.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+      del.addEventListener('click', () => {
+        syncCreateOpts(); createOpts.splice(i, 1);
+        if (createCorrect >= createOpts.length) createCorrect = createOpts.length - 1;
+        renderCreateOptionRows();
+      });
+      row.appendChild(del);
+    }
+    wrap.appendChild(row);
+  });
+  if (createOpts.length < 8) {
+    const add = document.createElement('button');
+    add.type = 'button'; add.className = 'cr-add-opt'; add.textContent = '+ Add option';
+    add.addEventListener('click', () => {
+      syncCreateOpts(); createOpts.push(''); renderCreateOptionRows();
+      setTimeout(() => document.getElementById(`co-${createOpts.length - 1}`)?.focus(), 40);
+    });
+    wrap.appendChild(add);
+  }
+}
+
+function renderCreateModal() {
+  const createdDeck = getCreatedDeck();
+  $('#modal-title').textContent = 'Create deck';
+  const cards = createdDeck.map((q, i) => `
+    <div class="create-card-item">
+      <div class="create-card-num">${i + 1}</div>
+      <div class="create-card-body">
+        <div class="create-card-q">${escapeHtml(q.q)}</div>
+        <div class="create-card-ans">✓ ${escapeHtml(q.opts[q.ans])}</div>
+      </div>
+      <button class="create-card-del" onclick="deleteCreateCard(${i})" title="Delete">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+          <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+        </svg>
+      </button>
+    </div>`).join('');
+
+  $('#modal-content').innerHTML = `
+    <div class="create-card-list" id="create-card-list">
+      ${createdDeck.length > 0 ? cards
+        : `<div class="empty-state" style="padding:2rem 0"><h3>No cards yet</h3><p>Add your first card below.</p></div>`}
+    </div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+    <div class="form-group">
+      <label>Question</label>
+      <textarea id="create-q" rows="3" placeholder="Type your question here…"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Options <span class="form-optional">— click number to mark correct</span></label>
+      <div id="create-opts-wrap"></div>
+    </div>
+    <div class="form-group">
+      <label>Explanation <span class="form-optional">(optional)</span></label>
+      <textarea id="create-exp" rows="2" placeholder="Explain the correct answer…"></textarea>
+    </div>
+    <p id="create-error" style="color:var(--red);font-size:12px;margin-bottom:8px;display:none"></p>
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <button class="btn" onclick="addCreateCard()">+ Add card</button>
+      ${createdDeck.length > 0
+        ? `<button class="btn btn-primary" style="flex:1" onclick="studyCreatedDeck()">Study deck →</button>`
+        : ''}
+    </div>`;
+
+  resetCreateForm();
+  renderCreateOptionRows();
+}
+
+function addCreateCard() {
+  syncCreateOpts();
+  const qText       = ($('#create-q').value || '').trim();
+  const trimmedOpts = createOpts.map(o => o.trim());
+  const exp         = ($('#create-exp').value || '').trim();
+  const err         = $('#create-error');
+
+  if (!qText) { err.textContent = 'Please enter a question.'; err.style.display = ''; return; }
+  const emptyIdx = trimmedOpts.findIndex(o => !o);
+  if (emptyIdx !== -1) { err.textContent = `Please fill in Option ${emptyIdx + 1}.`; err.style.display = ''; return; }
+
+  const d = getCreatedDeck();
+  d.push({
+    id: `created_${Date.now()}`, mod: 1, mod_name: 'My Deck', type: 'MCQ',
+    q: qText, opts: trimmedOpts, ans: createCorrect, exp,
+  });
+  saveCreatedDeck(d);
+  renderCreateModal();
+}
+
+function deleteCreateCard(i) {
+  const d = getCreatedDeck(); d.splice(i, 1); saveCreatedDeck(d);
+  renderCreateModal();
+}
+
+// ── Edit-form option helpers (shared by Edit & Add-card views) ────────────
 function syncEditOpts() {
   document.querySelectorAll('.edit-opt-input').forEach((inp, i) => {
     if (i < editOpts.length) editOpts[i] = inp.value;
@@ -585,460 +893,44 @@ function renderEditOptionRows() {
   const wrap = document.getElementById('edit-opts-wrap');
   if (!wrap) return;
   wrap.innerHTML = '';
-
   editOpts.forEach((val, i) => {
-    const row = document.createElement('div');
+    const row    = document.createElement('div');
     row.className = 'cr-opt-row' + (editCorrect === i ? ' is-correct' : '');
-
     const numBtn = document.createElement('button');
-    numBtn.type        = 'button';
-    numBtn.className   = 'cr-opt-num' + (editCorrect === i ? ' correct' : '');
-    numBtn.title       = 'Mark as correct answer';
-    numBtn.textContent = i + 1;
-    numBtn.addEventListener('click', () => {
-      syncEditOpts();
-      editCorrect = i;
-      renderEditOptionRows();
-    });
-
+    numBtn.type = 'button'; numBtn.className = 'cr-opt-num' + (editCorrect === i ? ' correct' : '');
+    numBtn.title = 'Mark as correct'; numBtn.textContent = i + 1;
+    numBtn.addEventListener('click', () => { syncEditOpts(); editCorrect = i; renderEditOptionRows(); });
     const inp = document.createElement('input');
-    inp.className   = 'edit-opt-input';
-    inp.id          = `eo-${i}`;
-    inp.value       = val;
-    inp.placeholder = `Option ${i + 1}`;
-
-    row.appendChild(numBtn);
-    row.appendChild(inp);
-
+    inp.className = 'edit-opt-input'; inp.id = `eo-${i}`; inp.value = val; inp.placeholder = `Option ${i + 1}`;
+    row.appendChild(numBtn); row.appendChild(inp);
     if (editOpts.length > 2) {
-      const delBtn = document.createElement('button');
-      delBtn.type      = 'button';
-      delBtn.className = 'cr-opt-del';
-      delBtn.title     = 'Remove this option';
-      delBtn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
-      delBtn.addEventListener('click', () => {
-        syncEditOpts();
-        editOpts.splice(i, 1);
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'cr-opt-del'; del.title = 'Remove';
+      del.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+      del.addEventListener('click', () => {
+        syncEditOpts(); editOpts.splice(i, 1);
         if (editCorrect >= editOpts.length) editCorrect = editOpts.length - 1;
         renderEditOptionRows();
       });
-      row.appendChild(delBtn);
+      row.appendChild(del);
     }
-
     wrap.appendChild(row);
   });
-
   if (editOpts.length < 8) {
-    const addBtn = document.createElement('button');
-    addBtn.type        = 'button';
-    addBtn.className   = 'cr-add-opt';
-    addBtn.textContent = '+ Add option';
-    addBtn.addEventListener('click', () => {
-      syncEditOpts();
-      editOpts.push('');
-      renderEditOptionRows();
+    const add = document.createElement('button');
+    add.type = 'button'; add.className = 'cr-add-opt'; add.textContent = '+ Add option';
+    add.addEventListener('click', () => {
+      syncEditOpts(); editOpts.push(''); renderEditOptionRows();
       setTimeout(() => document.getElementById(`eo-${editOpts.length - 1}`)?.focus(), 40);
     });
-    wrap.appendChild(addBtn);
+    wrap.appendChild(add);
   }
-}
-
-// Render the dynamic option rows inside #create-opts-wrap
-function renderCreateOptionRows() {
-  const wrap = document.getElementById('create-opts-wrap');
-  if (!wrap) return;
-  wrap.innerHTML = '';
-
-  createOpts.forEach((val, i) => {
-    const row = document.createElement('div');
-    row.className = 'cr-opt-row' + (createCorrect === i ? ' is-correct' : '');
-
-    // Numbered circle — click to mark as correct answer
-    const numBtn = document.createElement('button');
-    numBtn.type      = 'button';
-    numBtn.className = 'cr-opt-num' + (createCorrect === i ? ' correct' : '');
-    numBtn.title     = 'Mark as correct answer';
-    numBtn.textContent = i + 1;
-    numBtn.addEventListener('click', () => {
-      syncCreateOpts();
-      createCorrect = i;
-      renderCreateOptionRows();
-    });
-
-    // Text input
-    const inp = document.createElement('input');
-    inp.className   = 'create-opt-input';
-    inp.id          = `co-${i}`;
-    inp.value       = val;
-    inp.placeholder = `Option ${i + 1}`;
-
-    row.appendChild(numBtn);
-    row.appendChild(inp);
-
-    // Remove button — only show when >2 options
-    if (createOpts.length > 2) {
-      const delBtn = document.createElement('button');
-      delBtn.type      = 'button';
-      delBtn.className = 'cr-opt-del';
-      delBtn.title     = 'Remove this option';
-      delBtn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
-      delBtn.addEventListener('click', () => {
-        syncCreateOpts();
-        createOpts.splice(i, 1);
-        if (createCorrect >= createOpts.length) createCorrect = createOpts.length - 1;
-        renderCreateOptionRows();
-      });
-      row.appendChild(delBtn);
-    }
-
-    wrap.appendChild(row);
-  });
-
-  // Add option button — cap at 8
-  if (createOpts.length < 8) {
-    const addBtn = document.createElement('button');
-    addBtn.type      = 'button';
-    addBtn.className = 'cr-add-opt';
-    addBtn.textContent = '+ Add option';
-    addBtn.addEventListener('click', () => {
-      syncCreateOpts();
-      createOpts.push('');
-      renderCreateOptionRows();
-      setTimeout(() => document.getElementById(`co-${createOpts.length - 1}`)?.focus(), 40);
-    });
-    wrap.appendChild(addBtn);
-  }
-}
-
-function renderCreateModal() {
-  const createdDeck = getCreatedDeck();
-  const hasCards    = createdDeck.length > 0;
-
-  // Reset form for a fresh entry each time the modal is opened / a card is added
-  resetCreateForm();
-
-  $('#modal-content').innerHTML = `
-    <div class="create-form">
-      <div class="form-group">
-        <label>Question</label>
-        <textarea id="create-q" rows="3" placeholder="Type your question here…"></textarea>
-      </div>
-      <div class="form-group">
-        <label>Options
-          <span class="form-optional">— click a number to mark it correct</span>
-        </label>
-        <div id="create-opts-wrap"></div>
-      </div>
-      <div class="form-group">
-        <label>Explanation <span class="form-optional">(optional)</span></label>
-        <textarea id="create-exp" rows="2" placeholder="Explain the correct answer…"></textarea>
-      </div>
-      <p id="create-add-error" style="color:var(--red);font-size:12px;margin-bottom:8px;display:none"></p>
-      <button class="btn btn-primary btn-block" onclick="addCreateCard()">+ Add to deck</button>
-    </div>
-
-    ${hasCards ? `
-    <div style="margin-top:20px">
-      <div class="section-label">Deck · ${createdDeck.length} question${createdDeck.length !== 1 ? 's' : ''}</div>
-      <div class="create-card-list">
-        ${createdDeck.map((q, i) => createCardItemHTML(q, i)).join('')}
-      </div>
-    </div>
-    <div class="create-footer">
-      <button class="btn" onclick="exportCreatedDeck()">⬇ Export JSON</button>
-      <button class="btn btn-primary" onclick="studyCreatedDeck()">Study these →</button>
-    </div>
-    ` : ''}`;
-
-  renderCreateOptionRows();
-}
-
-function createCardItemHTML(q, i) {
-  return `<div class="create-card-item">
-    <div class="create-card-num">${i + 1}</div>
-    <div class="create-card-body">
-      <div class="create-card-q">${escapeHtml(q.q)}</div>
-      <div class="create-card-ans">✓ ${escapeHtml(q.opts[q.ans])}</div>
-    </div>
-    <button class="create-card-del" onclick="deleteCreateCard(${i})" title="Delete">✕</button>
-  </div>`;
-}
-
-function addCreateCard() {
-  // Sync inputs → createOpts before reading
-  syncCreateOpts();
-
-  const qText = ($('#create-q').value || '').trim();
-  const exp   = ($('#create-exp').value || '').trim();
-  const errEl = $('#create-add-error');
-
-  if (!qText) { errEl.textContent = 'Please enter a question.'; errEl.style.display = ''; return; }
-
-  const trimmedOpts = createOpts.map(o => o.trim());
-  for (let i = 0; i < trimmedOpts.length; i++) {
-    if (!trimmedOpts[i]) {
-      errEl.textContent = `Please fill in Option ${i + 1}.`;
-      errEl.style.display = '';
-      return;
-    }
-  }
-  errEl.style.display = 'none';
-
-  const d = getCreatedDeck();
-  d.push({
-    id:       `created_${Date.now()}`,
-    mod:      1,
-    mod_name: 'My Deck',
-    type:     'MCQ',
-    q:        qText,
-    opts:     trimmedOpts,
-    ans:      createCorrect,
-    exp,
-  });
-  saveCreatedDeck(d);
-  renderCreateModal(); // resets form + shows updated list
-}
-
-function deleteCreateCard(idx) {
-  const d = getCreatedDeck();
-  d.splice(idx, 1);
-  saveCreatedDeck(d);
-  // Rebuild just the card list without touching the form
-  const listWrap = document.querySelector('.create-card-list');
-  const label    = document.querySelector('.section-label');
-  if (d.length === 0) {
-    // Remove the whole deck section
-    document.querySelector('.create-footer')?.remove();
-    listWrap?.closest('div')?.remove();
-  } else {
-    if (label) label.textContent = `Deck · ${d.length} question${d.length !== 1 ? 's' : ''}`;
-    if (listWrap) listWrap.innerHTML = d.map((q, i) => createCardItemHTML(q, i)).join('');
-  }
-}
-
-function exportCreatedDeck() {
-  const d = getCreatedDeck();
-  if (!d.length) return;
-  const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = 'my-deck.json';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function studyCreatedDeck() {
-  const d = getCreatedDeck();
-  if (!d.length) return;
-  allQuestions   = d;
-  allModules     = [{ id: 1, name: 'My Deck', count: d.length }];
-  selectedMods   = new Set([1]);
-  loadedFileName = 'my-deck.json';
-  closeModal();
-  startQuiz();
-}
-
-// ── Demo modal ─────────────────────────────────────────────────────────────
-function renderDemoModal() {
-  $('#modal-content').innerHTML = `
-    <div style="text-align:center;padding:1.5rem 0 0.5rem">
-      <div style="font-size:44px;margin-bottom:14px">🐝</div>
-      <div style="font-size:17px;font-weight:600;color:var(--text);margin-bottom:6px">Georgia Tech Trivia</div>
-      <div style="font-size:13px;color:var(--text-3);margin-bottom:28px">5 questions about Georgia Tech history &amp; culture</div>
-      <button class="btn btn-primary" style="padding:10px 28px;font-size:15px" onclick="startDemo()">Start demo →</button>
-    </div>`;
-}
-
-function startDemo() {
-  allQuestions   = DEMO_QUESTIONS;
-  allModules     = [{ id: 0, name: 'Georgia Tech Trivia', count: DEMO_QUESTIONS.length }];
-  selectedMods   = new Set([0]);
-  loadedFileName = 'demo';
-  closeModal();
-  startQuiz();
-}
-
-// ── Header menu ────────────────────────────────────────────────────────────
-function toggleMenu(e) {
-  e.stopPropagation();
-  const dropdown = document.getElementById('menu-dropdown');
-  const isOpen   = !dropdown.classList.contains('hidden');
-  if (isOpen) { closeMenu(); return; }
-  menuResetCancel();
-  menuImportCancel();
-  updateMenuStates();
-  dropdown.classList.remove('hidden');
-  document.getElementById('menu-btn').classList.add('open');
-}
-
-function closeMenu() {
-  menuImportCancel();
-  document.getElementById('menu-dropdown')?.classList.add('hidden');
-  document.getElementById('menu-btn')?.classList.remove('open');
-}
-
-function updateMenuStates() {
-  const has = allQuestions.length > 0;
-  ['mi-edit', 'mi-export', 'mi-clear'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.disabled = !has;
-  });
-}
-
-function menuEdit()   { closeMenu(); openEditModal(); }
-function menuExport() { closeMenu(); exportLoadedDeck(); }
-function menuClear()  { closeMenu(); clearQuestions(); }
-
-function menuResetConfirm() {
-  document.getElementById('mi-reset').classList.add('hidden');
-  document.getElementById('mi-reset-confirm').classList.remove('hidden');
-}
-function menuResetCancel() {
-  document.getElementById('mi-reset')?.classList.remove('hidden');
-  document.getElementById('mi-reset-confirm')?.classList.add('hidden');
-}
-function menuResetGo() {
-  closeMenu();
-  menuResetCancel();
-  localResetStats();
-  updateResumeCard();
-  if (!$('#page-stats').classList.contains('hidden')) loadStats();
-}
-
-// ── Stats export / import ───────────────────────────────────────────────────
-function menuExportStats() {
-  closeMenu();
-  const sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
-  const qstats   = JSON.parse(localStorage.getItem(QSTATS_KEY)   || '{}');
-
-  // Bundle current deck position so the other device can resume at the exact spot
-  const deckState = (quizActive && deck.length > 0) ? {
-    deckIds:        deck.map(q => q.id),
-    deckPos,
-    round,
-    sessionRight,
-    sessionTotal,
-    sessionByMod,
-    selectedModIds: [...selectedMods],
-    loadedFileName,
-  } : null;
-
-  // Include the full questions array so the import is completely self-contained
-  // (no need to separately load questions.json on the destination device)
-  const questionsPayload = allQuestions.length > 0
-    ? { filename: loadedFileName, data: allQuestions }
-    : null;
-
-  const payload = {
-    version:     3,
-    exported_at: new Date().toISOString(),
-    sessions,
-    qstats,
-    deckState,
-    questions:   questionsPayload,
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = `cs6250_save_${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function menuImportStats() {
-  const input    = document.createElement('input');
-  input.type     = 'file';
-  input.accept   = '.json';
-  input.onchange = e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader   = new FileReader();
-    reader.onload  = ev => {
-      try {
-        const data = JSON.parse(ev.target.result);
-        if (!Array.isArray(data.sessions) || typeof data.qstats !== 'object') {
-          throw new Error('Not a valid stats file.');
-        }
-        pendingImportData = data;
-        const n        = data.sessions.length;
-        const hasDeck  = !!(data.deckState && data.deckState.deckIds?.length);
-        const hasQs    = !!(data.questions?.data?.length);
-        const qCount   = hasQs ? data.questions.data.length : 0;
-        const msg = document.getElementById('mi-import-msg');
-        if (msg) {
-          let line = `${n} session${n !== 1 ? 's' : ''}`;
-          if (hasQs)   line += ` · ${qCount} questions`;
-          if (hasDeck) line += ` · resume at Q${(data.deckState.deckPos || 0) + 1}`;
-          msg.textContent = `Load save: ${line}`;
-        }
-        document.getElementById('mi-import-stats').classList.add('hidden');
-        document.getElementById('mi-export-stats').disabled = true;
-        document.getElementById('mi-import-confirm').classList.remove('hidden');
-      } catch (err) {
-        alert('Could not import: ' + err.message);
-      }
-    };
-    reader.readAsText(file);
-  };
-  input.click();
-}
-
-function menuImportGo() {
-  if (!pendingImportData) return;
-
-  // Close any open (unended) sessions in the imported data so stats are clean
-  const importedSessions = (pendingImportData.sessions || []).map(s =>
-    s.ended_at ? s : { ...s, ended_at: new Date().toISOString() }
-  );
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(importedSessions));
-  localStorage.setItem(QSTATS_KEY,   JSON.stringify(pendingImportData.qstats || {}));
-
-  // ── Apply bundled questions if present (makes import self-contained) ──────
-  if (pendingImportData.questions?.data?.length) {
-    const { filename, data } = pendingImportData.questions;
-    // Directly set questions state — bypass applyQuestions() to avoid
-    // ending any session we're about to restore from the deckState
-    allQuestions   = data;
-    loadedFileName = filename || 'questions.json';
-    const modMap   = {};
-    data.forEach(q => {
-      if (!modMap[q.mod]) modMap[q.mod] = { id: q.mod, name: q.mod_name || `Module ${q.mod}`, count: 0 };
-      modMap[q.mod].count++;
-    });
-    allModules = Object.values(modMap).sort((a, b) => a.id - b.id);
-    // Persist to localStorage so they survive a page refresh
-    try { localStorage.setItem(LS_KEY, JSON.stringify({ filename: loadedFileName, questions: data })); } catch {}
-    updateDeckCard();
-  }
-
-  // ── Restore deck position ─────────────────────────────────────────────────
-  if (pendingImportData.deckState) {
-    localStorage.setItem(DECK_STATE_KEY, JSON.stringify(pendingImportData.deckState));
-    tryRestoreDeckState(); // works immediately now that questions are loaded above
-  } else {
-    localStorage.removeItem(DECK_STATE_KEY);
-  }
-
-  pendingImportData = null;
-  closeMenu();
-  if (!$('#page-stats').classList.contains('hidden')) loadStats();
-}
-
-function menuImportCancel() {
-  pendingImportData = null;
-  document.getElementById('mi-import-stats')?.classList.remove('hidden');
-  const exportBtn = document.getElementById('mi-export-stats');
-  if (exportBtn) exportBtn.disabled = false;
-  document.getElementById('mi-import-confirm')?.classList.add('hidden');
 }
 
 // ── Edit modal ──────────────────────────────────────────────────────────────
 function openEditModal() {
   allQuestions = JSON.parse(JSON.stringify(allQuestions));
-  editView     = 'list';
-  editCardIdx  = null;
+  editView = 'list'; editCardIdx = null;
   openModal('edit');
 }
 
@@ -1058,15 +950,18 @@ function renderEditList() {
         <div class="create-card-ans">✓ ${escapeHtml(q.opts[q.ans])}</div>
       </div>
       <button class="create-card-edit" onclick="goEditCard(${i})" title="Edit">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
       </button>
-      <button class="create-card-del" onclick="deleteEditCard(${i})" title="Delete">✕</button>
+      <button class="create-card-del" onclick="deleteEditCard(${i})" title="Delete">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+      </button>
     </div>`).join('');
 
   $('#modal-content').innerHTML = `
-    ${allQuestions.length > 0
-      ? `<div class="create-card-list">${cards}</div>`
-      : `<div class="empty-state" style="padding:2rem 0"><h3>No cards</h3><p>Add some cards below.</p></div>`}
+    <div class="create-card-list">
+      ${allQuestions.length > 0 ? cards
+        : `<div class="empty-state" style="padding:2rem 0"><h3>No cards</h3><p>Add some cards below.</p></div>`}
+    </div>
     <div class="create-footer" style="margin-top:12px">
       <button class="btn" onclick="goNewCard()">+ Add card</button>
       <button class="btn btn-primary" onclick="exportLoadedDeck()">↓ Export JSON</button>
@@ -1075,7 +970,7 @@ function renderEditList() {
 
 function renderEditForm() {
   const q = allQuestions[editCardIdx];
-  editOpts    = (q.opts || []).map(o => o);          // copy option array
+  editOpts    = (q.opts || []).map(o => o);
   editCorrect = q.ans ?? 0;
   $('#modal-title').textContent = `Edit card ${editCardIdx + 1} of ${allQuestions.length}`;
   $('#modal-content').innerHTML = `
@@ -1101,7 +996,7 @@ function renderEditForm() {
 }
 
 function renderNewCardForm() {
-  editOpts    = ['', '', '', ''];
+  editOpts    = ['','','',''];
   editCorrect = 0;
   $('#modal-title').textContent = 'Add card';
   $('#modal-content').innerHTML = `
@@ -1132,15 +1027,15 @@ function goEditList()  { editView = 'list'; renderEditModal(); }
 
 function saveEditCard() {
   syncEditOpts();
-  const qText      = ($('#edit-q').value || '').trim();
+  const qText       = ($('#edit-q').value || '').trim();
   const trimmedOpts = editOpts.map(o => o.trim());
-  const exp        = ($('#edit-exp').value || '').trim();
-  const err        = $('#edit-error');
+  const exp         = ($('#edit-exp').value || '').trim();
+  const err         = $('#edit-error');
   if (!qText) { err.textContent = 'Please enter a question.'; err.style.display = ''; return; }
   const emptyIdx = trimmedOpts.findIndex(o => !o);
   if (emptyIdx !== -1) { err.textContent = `Please fill in Option ${emptyIdx + 1}.`; err.style.display = ''; return; }
-  allQuestions[editCardIdx] = { ...allQuestions[editCardIdx], q: qText, opts: trimmedOpts, ans: editCorrect, exp };
-  updateDeckCard();
+  allQuestions[editCardIdx] = { ...allQuestions[editCardIdx], q:qText, opts:trimmedOpts, ans:editCorrect, exp };
+  syncEditedDeckToStorage();
   goEditList();
 }
 
@@ -1154,27 +1049,31 @@ function saveNewEditCard() {
   const emptyIdx = trimmedOpts.findIndex(o => !o);
   if (emptyIdx !== -1) { err.textContent = `Please fill in Option ${emptyIdx + 1}.`; err.style.display = ''; return; }
   allQuestions.push({
-    id:       `edit_${Date.now()}`,
+    id: `edit_${Date.now()}`,
     mod:      allQuestions[0]?.mod      ?? 1,
     mod_name: allQuestions[0]?.mod_name ?? 'My Deck',
-    type:     'MCQ',
-    q: qText, opts: trimmedOpts, ans: editCorrect, exp,
+    type: 'MCQ', q:qText, opts:trimmedOpts, ans:editCorrect, exp,
   });
-  updateDeckCard();
+  syncEditedDeckToStorage();
   goEditList();
 }
 
 function deleteEditCard(i) {
   allQuestions.splice(i, 1);
-  updateDeckCard();
+  syncEditedDeckToStorage();
   renderEditList();
 }
 
 // ── Quiz start ─────────────────────────────────────────────────────────────
 function startQuiz() {
-  // Always end any existing session and clear saved deck state
   if (sessionId) { localEndSession(sessionId); sessionId = null; }
-  localStorage.removeItem(DECK_STATE_KEY);
+
+  // Clear any saved deck state for this deck
+  if (activeDeckId) {
+    const obj = getDeckStats(activeDeckId);
+    obj.deckState = null;
+    saveDeckStats(activeDeckId, obj);
+  }
 
   quizActive   = false;
   const pool   = allQuestions.filter(q => selectedMods.has(q.mod));
@@ -1186,6 +1085,7 @@ function startQuiz() {
   sessionByMod = {};
   answered     = false;
   sessionId    = localStartSession([...selectedMods]);
+  quizActive   = true;
   restoreQuizShell();
   setView('quiz');
   renderQuestion();
@@ -1195,7 +1095,6 @@ function getPool() { return allQuestions.filter(q => selectedMods.has(q.mod)); }
 
 // ── Quiz shell ─────────────────────────────────────────────────────────────
 function restoreQuizShell() {
-  // action-row lives OUTSIDE the card so it can be fixed at the bottom on mobile
   $('#page-quiz').innerHTML = `
     <div class="pbar-wrap"><div class="pbar-fill" id="pbar" style="width:0%"></div></div>
     <div class="meta-row">
@@ -1218,9 +1117,8 @@ function restoreQuizShell() {
 
 // ── Render question ────────────────────────────────────────────────────────
 function renderQuestion() {
-  quizActive = true;
-  answered   = false;
-  currentQ   = deck[deckPos];
+  answered = false;
+  currentQ = deck[deckPos];
   const total = deck.length;
   const pos   = deckPos + 1;
   const isTF  = currentQ.type === 'T/F';
@@ -1235,25 +1133,20 @@ function renderQuestion() {
   opts.innerHTML = '';
   currentQ.opts.forEach((o, i) => {
     const btn = document.createElement('button');
-    btn.className  = 'opt';
-    btn.dataset.i  = i;
-    const lbl      = isTF ? (i === 0 ? 'T' : 'F') : (i + 1);
-    btn.innerHTML  = `<span class="opt-ltr">${lbl}</span><span>${escapeHtml(o)}</span>`;
+    btn.className = 'opt'; btn.dataset.i = i;
+    const lbl = isTF ? (i === 0 ? 'T' : 'F') : (i + 1);
+    btn.innerHTML = `<span class="opt-ltr">${lbl}</span><span>${escapeHtml(o)}</span>`;
     btn.addEventListener('click', () => pickAnswer(i));
     opts.appendChild(btn);
   });
 
   const fb = $('#q-fb');
-  fb.className     = 'fb';
-  fb.style.display = 'none';
-  fb.innerHTML     = '';
+  fb.className = 'fb'; fb.style.display = 'none'; fb.innerHTML = '';
   $('#btn-next').classList.add('hidden');
 
-  // Keyboard hint — hidden on mobile via CSS
   $('#kbd-hint').innerHTML = isTF
     ? 'Press <kbd>T</kbd> True &nbsp;·&nbsp; <kbd>F</kbd> False'
     : 'Press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> to answer';
-
   $('#session-score').textContent = sessionTotal > 0
     ? `Session: ${sessionRight} / ${sessionTotal} correct` : '';
 }
@@ -1262,7 +1155,6 @@ function renderQuestion() {
 async function pickAnswer(chosen) {
   if (answered) return;
   answered = true;
-
   const correct = (chosen === currentQ.ans);
 
   $$('.opt').forEach(b => b.disabled = true);
@@ -1272,16 +1164,13 @@ async function pickAnswer(chosen) {
     else if (i === chosen && !correct) btn.classList.add('wrong');
   });
 
-  sessionTotal++;
-  if (correct) sessionRight++;
+  sessionTotal++; if (correct) sessionRight++;
   if (!sessionByMod[currentQ.mod])
-    sessionByMod[currentQ.mod] = { right: 0, total: 0, name: currentQ.mod_name };
+    sessionByMod[currentQ.mod] = { right:0, total:0, name:currentQ.mod_name };
   sessionByMod[currentQ.mod].total++;
   if (correct) sessionByMod[currentQ.mod].right++;
 
-  const expHtml = currentQ.exp
-    ? `<div class="fb-explain">${escapeHtml(currentQ.exp)}</div>` : '';
-
+  const expHtml = currentQ.exp ? `<div class="fb-explain">${escapeHtml(currentQ.exp)}</div>` : '';
   const fb = $('#q-fb');
   if (correct) {
     fb.className = 'fb ok';
@@ -1295,9 +1184,7 @@ async function pickAnswer(chosen) {
   $('#kbd-hint').innerHTML = 'Press <kbd>Space</kbd> <kbd>→</kbd> or <kbd>Enter</kbd> for next';
   $('#session-score').textContent = `Session: ${sessionRight} / ${sessionTotal} correct`;
 
-  if (sessionId) {
-    localRecordAnswer(sessionId, currentQ.id, currentQ.mod, correct ? 1 : 0, currentQ);
-  }
+  if (sessionId) localRecordAnswer(sessionId, currentQ.id, currentQ.mod, correct ? 1 : 0, currentQ);
 }
 
 // ── Keyboard shortcuts ─────────────────────────────────────────────────────
@@ -1307,7 +1194,6 @@ document.addEventListener('keydown', e => {
   if ($('#page-quiz').classList.contains('hidden') || !currentQ) return;
 
   const isTF = currentQ.type === 'T/F';
-
   if (!answered) {
     if (isTF) {
       if (e.key === 't' || e.key === 'T' || e.key === '1') pickAnswer(0);
@@ -1318,7 +1204,7 @@ document.addEventListener('keydown', e => {
     }
   } else {
     if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault(); // prevent space from scrolling the page
+      e.preventDefault();
       nextQuestion();
     }
   }
@@ -1329,24 +1215,19 @@ function nextQuestion() {
   deckPos++;
   if (deckPos >= deck.length) {
     if (round === 1) {
-      // First pass complete — end session and show results
       if (sessionId) localEndSession(sessionId);
       quizActive = false;
       showResults();
       return;
     }
-    // Round 2+ — reshuffle and keep going
-    round++;
-    deck    = shuffle(getPool());
-    deckPos = 0;
+    round++; deck = shuffle(getPool()); deckPos = 0;
   }
   renderQuestion();
 }
 
-// Go Back: preserve session so user can resume from the home screen
 function quitQuiz() {
   setView('home');
-  // quizActive stays true → resume card remains visible
+  // quizActive stays true → resume card stays visible
 }
 
 // ── Results ────────────────────────────────────────────────────────────────
@@ -1356,13 +1237,12 @@ function showResults() {
 
   const n   = sessionTotal;
   const pct = Math.round((sessionRight / n) * 100);
-
   let grade, gc;
-  if (pct >= 90)      { grade = 'Outstanding';   gc = 'var(--green)'; }
-  else if (pct >= 80) { grade = 'Very good';      gc = 'var(--green)'; }
-  else if (pct >= 70) { grade = 'Good';           gc = 'var(--text)'; }
-  else if (pct >= 60) { grade = 'Passing';        gc = 'var(--amber)'; }
-  else                { grade = 'Keep reviewing'; gc = 'var(--red)'; }
+  if (pct >= 90)      { grade='Outstanding';   gc='var(--green)'; }
+  else if (pct >= 80) { grade='Very good';      gc='var(--green)'; }
+  else if (pct >= 70) { grade='Good';           gc='var(--text)'; }
+  else if (pct >= 60) { grade='Passing';        gc='var(--amber)'; }
+  else                { grade='Keep reviewing'; gc='var(--red)'; }
 
   const r    = 44;
   const circ = 2 * Math.PI * r;
@@ -1394,8 +1274,7 @@ function showResults() {
       </div>
       ${Object.keys(sessionByMod).length > 1 ? `
         <div class="mod-breakdown">
-          <div class="section-title">By module</div>
-          ${modRows}
+          <div class="section-title">By module</div>${modRows}
         </div>` : ''}
       <div class="result-btns">
         <button class="btn btn-primary" onclick="restartSame()">Go again →</button>
@@ -1405,22 +1284,28 @@ function showResults() {
 }
 
 function restartSame() {
-  deck         = shuffle(getPool());
-  deckPos      = 0;
-  round        = 1;
-  sessionRight = 0;
-  sessionTotal = 0;
-  sessionByMod = {};
-  answered     = false;
-  sessionId    = localStartSession([...selectedMods]);
+  deck = shuffle(getPool()); deckPos = 0; round = 1;
+  sessionRight = 0; sessionTotal = 0; sessionByMod = {};
+  answered = false;
+  sessionId = localStartSession([...selectedMods]);
   restoreQuizShell();
   renderQuestion();
 }
 
-// ── Stats ──────────────────────────────────────────────────────────────────
+// ── Stats page ─────────────────────────────────────────────────────────────
 function loadStats() {
   const page = $('#page-stats');
   page.innerHTML = '<div class="spinner"></div>';
+
+  if (!activeDeckId || !allQuestions.length) {
+    page.innerHTML = `<div class="stats-page">
+      <h2>Stats</h2>
+      <div class="empty-state" style="padding:3rem 0">
+        <p>Load a deck to see your stats.</p>
+      </div>
+    </div>`;
+    return;
+  }
 
   const { totals, sessions, weak } = localGetStats();
   const ta  = totals.total_answered || 0;
@@ -1436,10 +1321,8 @@ function loadStats() {
         const p   = s.total > 0 ? Math.round(s.correct / s.total * 100) : 0;
         const cls = p >= 70 ? 'good' : p >= 50 ? 'mid' : 'low';
         const dt  = (() => {
-          try {
-            return new Date(s.started_at)
-              .toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-          } catch { return s.started_at; }
+          try { return new Date(s.started_at).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }); }
+          catch { return s.started_at; }
         })();
         return `<tr>
           <td>${dt}</td>
@@ -1464,9 +1347,10 @@ function loadStats() {
         </div>`;
       }).join('');
 
+  const deckLabel = loadedTitle || loadedFileName || 'Active deck';
   page.innerHTML = `
     <div class="stats-page">
-      <h2>Your stats</h2>
+      <h2>Stats <span style="font-size:14px;font-weight:400;color:var(--text-3)">— ${escapeHtml(deckLabel)}</span></h2>
       <div class="overview-grid">
         <div class="stat-box"><div class="stat-val">${ts}</div><div class="stat-lbl">Sessions</div></div>
         <div class="stat-box"><div class="stat-val">${ta}</div><div class="stat-lbl">Answered</div></div>
@@ -1484,9 +1368,81 @@ function loadStats() {
     </div>`;
 }
 
+// ── Header menu ────────────────────────────────────────────────────────────
+function toggleMenu(e) {
+  e.stopPropagation();
+  const dropdown = document.getElementById('menu-dropdown');
+  const isOpen   = !dropdown.classList.contains('hidden');
+  if (isOpen) { closeMenu(); return; }
+  menuResetCancel();
+  updateMenuStates();
+  dropdown.classList.remove('hidden');
+  document.getElementById('menu-btn').classList.add('open');
+}
+
+function closeMenu() {
+  document.getElementById('menu-dropdown')?.classList.add('hidden');
+  document.getElementById('menu-btn')?.classList.remove('open');
+}
+
+function updateMenuStates() {
+  const has = allQuestions.length > 0;
+  ['mi-edit','mi-export'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !has;
+  });
+}
+
+function menuEdit()   { closeMenu(); openEditModal(); }
+function menuExport() { closeMenu(); exportLoadedDeck(); }
+
+function menuResetConfirm() {
+  document.getElementById('mi-reset').classList.add('hidden');
+  document.getElementById('mi-reset-confirm').classList.remove('hidden');
+}
+function menuResetCancel() {
+  document.getElementById('mi-reset')?.classList.remove('hidden');
+  document.getElementById('mi-reset-confirm')?.classList.add('hidden');
+}
+function menuResetGo() {
+  closeMenu(); menuResetCancel();
+  localResetStats();
+  updateResumeCard();
+  renderDeckSwitcher();
+  if (!$('#page-stats').classList.contains('hidden')) loadStats();
+}
+
+// ── Migration from old single-deck storage format ─────────────────────────
+function migrateOldStorage() {
+  if (localStorage.getItem(REGISTRY_KEY)) return; // already migrated
+  const old = localStorage.getItem('cs6250_questions');
+  if (!old) return;
+  try {
+    const { filename, questions } = JSON.parse(old);
+    if (!Array.isArray(questions) || !questions.length) return;
+    const id = `deck_${Date.now()}`;
+    upsertDeckMeta(id, { title:'', description:'', filename: filename||'questions.json',
+                          questionCount: questions.length, addedAt: Date.now() });
+    saveDeckQuestions(id, questions);
+    // Migrate old stats
+    const oldSessions = JSON.parse(localStorage.getItem('cs6250_sessions') || '[]');
+    const oldQStats   = JSON.parse(localStorage.getItem('cs6250_qstats')   || '{}');
+    const oldDState   = JSON.parse(localStorage.getItem('cs6250_deck_state') || 'null');
+    saveDeckStats(id, { sessions: oldSessions, qstats: oldQStats, deckState: oldDState });
+    localStorage.setItem(ACTIVE_KEY, id);
+  } catch {}
+  // Remove old keys
+  ['cs6250_questions','cs6250_sessions','cs6250_qstats','cs6250_deck_state'].forEach(k => {
+    try { localStorage.removeItem(k); } catch {}
+  });
+}
+
 // ── Boot ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   document.body.classList.add('view-home');
+
+  // Migrate from old single-deck format if needed
+  migrateOldStorage();
 
   $$('nav button[data-view]').forEach(btn => {
     btn.addEventListener('click', () => setView(btn.dataset.view));
@@ -1504,53 +1460,38 @@ document.addEventListener('DOMContentLoaded', () => {
   const uploadCard = document.getElementById('card-upload');
   if (uploadCard) {
     uploadCard.addEventListener('dragover', e => {
-      e.preventDefault();
-      e.stopPropagation();
-      uploadCard.classList.add('drag-over');
+      e.preventDefault(); e.stopPropagation(); uploadCard.classList.add('drag-over');
     });
     uploadCard.addEventListener('dragleave', e => {
-      if (!uploadCard.contains(e.relatedTarget)) {
-        uploadCard.classList.remove('drag-over');
-      }
+      if (!uploadCard.contains(e.relatedTarget)) uploadCard.classList.remove('drag-over');
     });
     uploadCard.addEventListener('drop', e => {
-      e.preventDefault();
-      e.stopPropagation();
+      e.preventDefault(); e.stopPropagation();
       uploadCard.classList.remove('drag-over');
       const file = e.dataTransfer.files[0];
       if (!file) return;
       if (!file.name.endsWith('.json') && file.type !== 'application/json') {
-        openModal('upload');
-        setTimeout(() => showModalError('Please drop a .json file.'), 50);
-        return;
+        openModal('upload'); setTimeout(() => showModalError('Please drop a .json file.'), 50); return;
       }
-      const reader = new FileReader();
-      reader.onload  = ev => { parseQuestions(ev.target.result, file.name); openModal('upload'); };
+      const reader   = new FileReader();
+      reader.onload  = ev => { parseAndRegisterDeck(ev.target.result, file.name); openModal('upload'); };
       reader.onerror = ()  => { openModal('upload'); setTimeout(() => showModalError('Could not read file.'), 50); };
       reader.readAsText(file);
     });
   }
 
-  // Restore question cache from localStorage
+  // Restore active deck from registry
   try {
-    const cached = localStorage.getItem(LS_KEY);
-    if (cached) {
-      const { filename, questions } = JSON.parse(cached);
-      if (Array.isArray(questions) && questions.length > 0) {
-        allQuestions   = questions;
-        loadedFileName = filename || 'questions.json';
-        const modMap   = {};
-        questions.forEach(q => {
-          if (!modMap[q.mod]) modMap[q.mod] = { id: q.mod, name: q.mod_name || `Module ${q.mod}`, count: 0 };
-          modMap[q.mod].count++;
-        });
-        allModules = Object.values(modMap).sort((a, b) => a.id - b.id);
-        updateDeckCard();
-        // Check for a pending deck-state restore (e.g. after importing stats)
-        tryRestoreDeckState();
-      }
+    const savedActiveId = localStorage.getItem(ACTIVE_KEY);
+    const reg = getRegistry();
+    if (savedActiveId && reg[savedActiveId]) {
+      loadDeckIntoMemory(savedActiveId);
+      tryRestoreDeckState();
     }
   } catch {}
 
   updateCreateCard();
+  updateMenuStates();
+  renderDeckSwitcher();
+  updateResumeCard();
 });

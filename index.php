@@ -11,7 +11,7 @@ if (!file_exists($db_path)) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CS6250 · Study Quiz</title>
-  <link rel="stylesheet" href="assets/css/style.css?v=15">
+  <link rel="stylesheet" href="assets/css/style.css?v=16">
 </head>
 <body>
 
@@ -42,35 +42,15 @@ if (!file_exists($db_path)) {
           </button>
           <button class="menu-item" id="mi-export" onclick="menuExport()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Export deck
+            Export deck JSON
           </button>
           <div class="menu-divider"></div>
-          <button class="menu-item" id="mi-export-stats" onclick="menuExportStats()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Export save state
-          </button>
-          <button class="menu-item" id="mi-import-stats" onclick="menuImportStats()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Import save state
-          </button>
-          <div class="menu-import-confirm hidden" id="mi-import-confirm">
-            <p id="mi-import-msg">Load save state?</p>
-            <div class="menu-confirm-btns">
-              <button class="btn btn-sm" onclick="menuImportGo()">Yes, load</button>
-              <button class="btn btn-sm" onclick="menuImportCancel()">Cancel</button>
-            </div>
-          </div>
-          <div class="menu-divider"></div>
-          <button class="menu-item" id="mi-clear" onclick="menuClear()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-            Clear deck
-          </button>
           <button class="menu-item menu-item-danger" id="mi-reset" onclick="menuResetConfirm()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
             Reset stats
           </button>
           <div class="menu-reset-confirm hidden" id="mi-reset-confirm">
-            <p>Reset all session stats?</p>
+            <p>Reset stats for this deck?</p>
             <div class="menu-confirm-btns">
               <button class="btn btn-sm" onclick="menuResetGo()">Yes, reset</button>
               <button class="btn btn-sm" onclick="menuResetCancel()">Cancel</button>
@@ -87,86 +67,77 @@ if (!file_exists($db_path)) {
     <div id="page-home">
       <div class="home-content">
 
-      <!-- Resume banner (shown only when a session is in progress) -->
-      <div id="resume-card" class="hidden" role="button" tabindex="0"
-           onclick="resumeSession()"
-           onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();resumeSession()}">
-        <div class="resume-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="10"/>
-            <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
-          </svg>
-        </div>
-        <div class="resume-info">
-          <div class="resume-title">Continue session</div>
-          <div class="resume-sub" id="resume-sub"></div>
-        </div>
-        <div class="resume-arrow">→</div>
-      </div>
-
-      <!-- Loaded deck card (shown when a deck is loaded, hidden otherwise) -->
-      <div id="deck-card" class="hidden" role="button" tabindex="0"
-           onclick="openModal('upload')"
-           onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openModal('upload')}">
-        <div class="deck-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
-        </div>
-        <div class="deck-info">
-          <div class="deck-title" id="deck-title">questions.json</div>
-          <div class="deck-sub" id="deck-sub">0 questions</div>
-        </div>
-        <div class="deck-action">Study →</div>
-      </div>
-
-      <div class="mode-grid">
-
-        <!-- Upload -->
-        <div id="card-upload" class="mode-card" role="button" tabindex="0"
-             onclick="openModal('upload')"
-             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openModal('upload')}">
-          <div class="mode-icon-wrap">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-              <line x1="12" y1="11" x2="12" y2="17"/>
-              <polyline points="9 14 12 11 15 14"/>
-            </svg>
-          </div>
-          <div class="mode-title">Upload</div>
-          <div class="mode-sub" id="upload-sub">Drop a .json file or click to browse</div>
-
-        </div>
-
-        <!-- Create -->
-        <div class="mode-card" role="button" tabindex="0"
-             onclick="openModal('create')"
-             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openModal('create')}">
-          <div class="mode-icon-wrap">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 20h9"/>
-              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 9.5-9.5z"/>
-            </svg>
-          </div>
-          <div class="mode-title">Create</div>
-          <div class="mode-sub" id="create-sub">Build your own deck</div>
-        </div>
-
-        <!-- Demo -->
-        <div class="mode-card" role="button" tabindex="0"
-             onclick="openModal('demo')"
-             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openModal('demo')}">
-          <div class="mode-icon-wrap">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <!-- Resume banner (shown when a session is in progress) -->
+        <div id="resume-card" class="hidden" role="button" tabindex="0"
+             onclick="resumeSession()"
+             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();resumeSession()}">
+          <div class="resume-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="10"/>
               <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
             </svg>
           </div>
-          <div class="mode-title">Demo</div>
-          <div class="mode-sub">5 Georgia Tech questions</div>
+          <div class="resume-info">
+            <div class="resume-title">Continue session</div>
+            <div class="resume-sub" id="resume-sub"></div>
+          </div>
+          <div class="resume-arrow">→</div>
         </div>
 
-      </div><!-- /.mode-grid -->
+        <!-- My Decks switcher (populated by JS) -->
+        <div id="deck-switcher" class="hidden">
+          <div class="home-section-label">My Decks</div>
+          <div id="deck-list"></div>
+        </div>
+
+        <!-- Add a deck -->
+        <div id="add-deck-label" class="home-section-label hidden">Add a deck</div>
+        <div class="mode-grid">
+
+          <!-- Upload -->
+          <div id="card-upload" class="mode-card" role="button" tabindex="0"
+               onclick="openModal('upload')"
+               onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openModal('upload')}">
+            <div class="mode-icon-wrap">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                <line x1="12" y1="11" x2="12" y2="17"/>
+                <polyline points="9 14 12 11 15 14"/>
+              </svg>
+            </div>
+            <div class="mode-title">Upload</div>
+            <div class="mode-sub">Drop a .json file or click to browse</div>
+          </div>
+
+          <!-- Create -->
+          <div class="mode-card" role="button" tabindex="0"
+               onclick="openModal('create')"
+               onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openModal('create')}">
+            <div class="mode-icon-wrap">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20h9"/>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+            </div>
+            <div class="mode-title">Create</div>
+            <div class="mode-sub" id="create-sub">Build your own deck</div>
+          </div>
+
+          <!-- Demo -->
+          <div class="mode-card" role="button" tabindex="0"
+               onclick="openModal('demo')"
+               onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openModal('demo')}">
+            <div class="mode-icon-wrap">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
+              </svg>
+            </div>
+            <div class="mode-title">Demo</div>
+            <div class="mode-sub">5 Georgia Tech questions</div>
+          </div>
+
+        </div><!-- /.mode-grid -->
       </div><!-- /.home-content -->
       <a class="home-footer-link" href="https://jseverino.com" target="_blank" rel="noopener noreferrer">Visit jseverino.com →</a>
     </div>
@@ -194,6 +165,6 @@ if (!file_exists($db_path)) {
   </div>
 </div>
 
-<script src="assets/js/quiz.js?v=15"></script>
+<script src="assets/js/quiz.js?v=16"></script>
 </body>
 </html>

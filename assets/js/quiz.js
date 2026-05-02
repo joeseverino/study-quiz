@@ -285,6 +285,12 @@ function studyDeck(deckId) {
   if (quizActive) { setView('quiz'); } else { openModal('upload'); }
 }
 
+function editDeck(deckId) {
+  if (!loadDeckIntoMemory(deckId)) return;
+  updateMenuStates();
+  openEditModal();
+}
+
 // ── View switching ─────────────────────────────────────────────────────────
 function setView(v) {
   $$('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === v));
@@ -363,8 +369,9 @@ function renderDeckSwitcher() {
       <div class="deck-entry-right">
         <button class="btn btn-primary deck-study-btn" onclick="studyDeck('${id}')">Study →</button>
         <div class="deck-entry-actions">
-          <button class="btn btn-sm" onclick="exportDeckState('${id}')" title="Export save state">↓ Export state</button>
-          <button class="btn btn-sm" onclick="importDeckState('${id}')" title="Import save state">↑ Import state</button>
+          <button class="btn btn-sm" onclick="editDeck('${id}')" title="Edit cards">✎ Edit</button>
+          <button class="btn btn-sm" onclick="exportDeckState('${id}')" title="Export save state">↓ Export</button>
+          <button class="btn btn-sm" onclick="importDeckState('${id}')" title="Import save state">↑ Import</button>
           <button class="btn btn-sm deck-remove-btn" onclick="confirmRemoveDeck('${id}')" title="Remove deck">✕</button>
         </div>
       </div>`;
@@ -1387,13 +1394,10 @@ function closeMenu() {
 
 function updateMenuStates() {
   const has = allQuestions.length > 0;
-  ['mi-edit','mi-export'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.disabled = !has;
-  });
+  const el = document.getElementById('mi-export');
+  if (el) el.disabled = !has;
 }
 
-function menuEdit()   { closeMenu(); openEditModal(); }
 function menuExport() { closeMenu(); exportLoadedDeck(); }
 
 function menuResetConfirm() {

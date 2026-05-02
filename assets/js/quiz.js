@@ -67,6 +67,10 @@ let currentQ     = null;
 let editView    = 'list'; // 'list' | 'edit' | 'new'
 let editCardIdx = null;
 
+// Edit-form option state (shared by "edit card" and "add card to deck" views)
+let editOpts    = [];
+let editCorrect = 0;
+
 // Stats import pending data
 let pendingImportData = null;
 
@@ -570,6 +574,75 @@ function syncCreateOpts() {
   });
 }
 
+// ── Edit-form option-row helpers (shared by edit & add-card views) ─────────
+function syncEditOpts() {
+  document.querySelectorAll('.edit-opt-input').forEach((inp, i) => {
+    if (i < editOpts.length) editOpts[i] = inp.value;
+  });
+}
+
+function renderEditOptionRows() {
+  const wrap = document.getElementById('edit-opts-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+
+  editOpts.forEach((val, i) => {
+    const row = document.createElement('div');
+    row.className = 'cr-opt-row' + (editCorrect === i ? ' is-correct' : '');
+
+    const numBtn = document.createElement('button');
+    numBtn.type        = 'button';
+    numBtn.className   = 'cr-opt-num' + (editCorrect === i ? ' correct' : '');
+    numBtn.title       = 'Mark as correct answer';
+    numBtn.textContent = i + 1;
+    numBtn.addEventListener('click', () => {
+      syncEditOpts();
+      editCorrect = i;
+      renderEditOptionRows();
+    });
+
+    const inp = document.createElement('input');
+    inp.className   = 'edit-opt-input';
+    inp.id          = `eo-${i}`;
+    inp.value       = val;
+    inp.placeholder = `Option ${i + 1}`;
+
+    row.appendChild(numBtn);
+    row.appendChild(inp);
+
+    if (editOpts.length > 2) {
+      const delBtn = document.createElement('button');
+      delBtn.type      = 'button';
+      delBtn.className = 'cr-opt-del';
+      delBtn.title     = 'Remove this option';
+      delBtn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+      delBtn.addEventListener('click', () => {
+        syncEditOpts();
+        editOpts.splice(i, 1);
+        if (editCorrect >= editOpts.length) editCorrect = editOpts.length - 1;
+        renderEditOptionRows();
+      });
+      row.appendChild(delBtn);
+    }
+
+    wrap.appendChild(row);
+  });
+
+  if (editOpts.length < 8) {
+    const addBtn = document.createElement('button');
+    addBtn.type        = 'button';
+    addBtn.className   = 'cr-add-opt';
+    addBtn.textContent = '+ Add option';
+    addBtn.addEventListener('click', () => {
+      syncEditOpts();
+      editOpts.push('');
+      renderEditOptionRows();
+      setTimeout(() => document.getElementById(`eo-${editOpts.length - 1}`)?.focus(), 40);
+    });
+    wrap.appendChild(addBtn);
+  }
+}
+
 // Render the dynamic option rows inside #create-opts-wrap
 function renderCreateOptionRows() {
   const wrap = document.getElementById('create-opts-wrap');
@@ -1002,6 +1075,8 @@ function renderEditList() {
 
 function renderEditForm() {
   const q = allQuestions[editCardIdx];
+  editOpts    = (q.opts || []).map(o => o);          // copy option array
+  editCorrect = q.ans ?? 0;
   $('#modal-title').textContent = `Edit card ${editCardIdx + 1} of ${allQuestions.length}`;
   $('#modal-content').innerHTML = `
     <button class="btn btn-sm" style="margin-bottom:14px" onclick="goEditList()">← Back to deck</button>
@@ -1010,22 +1085,8 @@ function renderEditForm() {
       <textarea id="edit-q" rows="3">${escapeHtml(q.q)}</textarea>
     </div>
     <div class="form-group">
-      <label>Options</label>
-      <div class="create-opts-grid">
-        <input id="edit-opt-0" value="${escapeHtml(q.opts[0] || '')}" placeholder="Option 1"/>
-        <input id="edit-opt-1" value="${escapeHtml(q.opts[1] || '')}" placeholder="Option 2"/>
-        <input id="edit-opt-2" value="${escapeHtml(q.opts[2] || '')}" placeholder="Option 3"/>
-        <input id="edit-opt-3" value="${escapeHtml(q.opts[3] || '')}" placeholder="Option 4"/>
-      </div>
-    </div>
-    <div class="form-group">
-      <label>Correct answer</label>
-      <select id="edit-correct">
-        <option value="0" ${q.ans === 0 ? 'selected' : ''}>Option 1</option>
-        <option value="1" ${q.ans === 1 ? 'selected' : ''}>Option 2</option>
-        <option value="2" ${q.ans === 2 ? 'selected' : ''}>Option 3</option>
-        <option value="3" ${q.ans === 3 ? 'selected' : ''}>Option 4</option>
-      </select>
+      <label>Options <span class="form-optional">— click number to mark correct</span></label>
+      <div id="edit-opts-wrap"></div>
     </div>
     <div class="form-group">
       <label>Explanation <span class="form-optional">(optional)</span></label>
@@ -1036,9 +1097,12 @@ function renderEditForm() {
       <button class="btn" onclick="goEditList()">Cancel</button>
       <button class="btn btn-primary" style="flex:1" onclick="saveEditCard()">Save changes</button>
     </div>`;
+  renderEditOptionRows();
 }
 
 function renderNewCardForm() {
+  editOpts    = ['', '', '', ''];
+  editCorrect = 0;
   $('#modal-title').textContent = 'Add card';
   $('#modal-content').innerHTML = `
     <button class="btn btn-sm" style="margin-bottom:14px" onclick="goEditList()">← Back to deck</button>
@@ -1047,22 +1111,8 @@ function renderNewCardForm() {
       <textarea id="new-q" rows="3" placeholder="Type your question here…"></textarea>
     </div>
     <div class="form-group">
-      <label>Options</label>
-      <div class="create-opts-grid">
-        <input id="new-opt-0" placeholder="Option 1"/>
-        <input id="new-opt-1" placeholder="Option 2"/>
-        <input id="new-opt-2" placeholder="Option 3"/>
-        <input id="new-opt-3" placeholder="Option 4"/>
-      </div>
-    </div>
-    <div class="form-group">
-      <label>Correct answer</label>
-      <select id="new-correct">
-        <option value="0">Option 1</option>
-        <option value="1">Option 2</option>
-        <option value="2">Option 3</option>
-        <option value="3">Option 4</option>
-      </select>
+      <label>Options <span class="form-optional">— click number to mark correct</span></label>
+      <div id="edit-opts-wrap"></div>
     </div>
     <div class="form-group">
       <label>Explanation <span class="form-optional">(optional)</span></label>
@@ -1073,6 +1123,7 @@ function renderNewCardForm() {
       <button class="btn" onclick="goEditList()">Cancel</button>
       <button class="btn btn-primary" style="flex:1" onclick="saveNewEditCard()">Add to deck</button>
     </div>`;
+  renderEditOptionRows();
 }
 
 function goEditCard(i) { editCardIdx = i; editView = 'edit'; renderEditModal(); }
@@ -1080,38 +1131,34 @@ function goNewCard()   { editView = 'new';  renderEditModal(); }
 function goEditList()  { editView = 'list'; renderEditModal(); }
 
 function saveEditCard() {
-  const qText = ($('#edit-q').value || '').trim();
-  const opts  = [0,1,2,3].map(n => ($(`#edit-opt-${n}`).value || '').trim());
-  const ans   = parseInt($('#edit-correct').value);
-  const exp   = ($('#edit-exp').value || '').trim();
-  const err   = $('#edit-error');
-  if (!qText)   { err.textContent = 'Please enter a question.';   err.style.display = ''; return; }
-  if (!opts[0]) { err.textContent = 'Please fill in Option 1.';   err.style.display = ''; return; }
-  if (!opts[1]) { err.textContent = 'Please fill in Option 2.';   err.style.display = ''; return; }
-  if (!opts[2]) { err.textContent = 'Please fill in Option 3.';   err.style.display = ''; return; }
-  if (!opts[3]) { err.textContent = 'Please fill in Option 4.';   err.style.display = ''; return; }
-  allQuestions[editCardIdx] = { ...allQuestions[editCardIdx], q: qText, opts, ans, exp };
+  syncEditOpts();
+  const qText      = ($('#edit-q').value || '').trim();
+  const trimmedOpts = editOpts.map(o => o.trim());
+  const exp        = ($('#edit-exp').value || '').trim();
+  const err        = $('#edit-error');
+  if (!qText) { err.textContent = 'Please enter a question.'; err.style.display = ''; return; }
+  const emptyIdx = trimmedOpts.findIndex(o => !o);
+  if (emptyIdx !== -1) { err.textContent = `Please fill in Option ${emptyIdx + 1}.`; err.style.display = ''; return; }
+  allQuestions[editCardIdx] = { ...allQuestions[editCardIdx], q: qText, opts: trimmedOpts, ans: editCorrect, exp };
   updateDeckCard();
   goEditList();
 }
 
 function saveNewEditCard() {
-  const qText = ($('#new-q').value || '').trim();
-  const opts  = [0,1,2,3].map(n => ($(`#new-opt-${n}`).value || '').trim());
-  const ans   = parseInt($('#new-correct').value);
-  const exp   = ($('#new-exp').value || '').trim();
-  const err   = $('#new-error');
-  if (!qText)   { err.textContent = 'Please enter a question.';   err.style.display = ''; return; }
-  if (!opts[0]) { err.textContent = 'Please fill in Option 1.';   err.style.display = ''; return; }
-  if (!opts[1]) { err.textContent = 'Please fill in Option 2.';   err.style.display = ''; return; }
-  if (!opts[2]) { err.textContent = 'Please fill in Option 3.';   err.style.display = ''; return; }
-  if (!opts[3]) { err.textContent = 'Please fill in Option 4.';   err.style.display = ''; return; }
+  syncEditOpts();
+  const qText       = ($('#new-q').value || '').trim();
+  const trimmedOpts = editOpts.map(o => o.trim());
+  const exp         = ($('#new-exp').value || '').trim();
+  const err         = $('#new-error');
+  if (!qText) { err.textContent = 'Please enter a question.'; err.style.display = ''; return; }
+  const emptyIdx = trimmedOpts.findIndex(o => !o);
+  if (emptyIdx !== -1) { err.textContent = `Please fill in Option ${emptyIdx + 1}.`; err.style.display = ''; return; }
   allQuestions.push({
     id:       `edit_${Date.now()}`,
     mod:      allQuestions[0]?.mod      ?? 1,
     mod_name: allQuestions[0]?.mod_name ?? 'My Deck',
     type:     'MCQ',
-    q: qText, opts, ans, exp,
+    q: qText, opts: trimmedOpts, ans: editCorrect, exp,
   });
   updateDeckCard();
   goEditList();

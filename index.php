@@ -11,7 +11,7 @@ if (!file_exists($db_path)) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CS6250 · Study Quiz</title>
-  <link rel="stylesheet" href="assets/css/style.css?v=13">
+  <link rel="stylesheet" href="assets/css/style.css?v=14">
 </head>
 <body>
 
@@ -194,6 +194,6 @@ if (!file_exists($db_path)) {
   </div>
 </div>
 
-<script src="assets/js/quiz.js?v=13"></script>
+<script src="assets/js/quiz.js?v=14"></script>
 </body>
 </html>

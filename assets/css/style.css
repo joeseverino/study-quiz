@@ -786,7 +786,7 @@ body.view-home {
   border: 0.5px solid var(--border);
   box-shadow: 0 24px 64px rgba(0, 0, 0, .28);
   width: 100%;
-  max-width: 520px;
+  max-width: 680px;
   max-height: calc(100vh - 2rem);
   overflow-y: auto;
   display: flex;
@@ -930,9 +930,8 @@ body.view-home {
   font-weight: 500;
   color: var(--text);
   margin-bottom: 3px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .create-card-ans { font-size: 12px; color: var(--green-mid); }
 .create-card-del,

@@ -1188,6 +1188,101 @@ body.view-home {
   .deck-entry-actions { flex: 1; justify-content: flex-end; }
 }
 
+/* ── Streak badge ─────────────────────────────────────────────────────── */
+.streak-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(135deg, #ff6b35, #ff9a3c);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  margin: 6px 0 2px;
+  letter-spacing: 0.02em;
+  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.35);
+  animation: streak-pop 0.25s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes streak-pop {
+  from { transform: scale(0.7); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+
+/* ── Result streak line ───────────────────────────────────────────────── */
+.result-streak {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #ff6b35;
+  margin: 4px 0 8px;
+}
+
+/* ── Confidence tap buttons ───────────────────────────────────────────── */
+.conf-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.conf-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: center;
+  margin-bottom: 4px;
+}
+.conf-btn {
+  flex: 1;
+  min-width: 120px;
+  max-width: 180px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 0.83rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+.conf-btn:hover { background: var(--surface3); }
+.conf-btn:active { transform: scale(0.97); }
+.conf-got-it.conf-selected {
+  background: rgba(52, 199, 89, 0.18);
+  border-color: var(--green);
+  color: var(--green);
+}
+.conf-shaky.conf-selected {
+  background: rgba(255, 159, 10, 0.15);
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+/* ── Shuffle toggle in module selector ───────────────────────────────── */
+.shuffle-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text);
+  user-select: none;
+  margin-top: 4px;
+}
+.shuffle-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.shuffle-toggle:hover { background: var(--surface3); }
+
 /* ── Mobile: fixed action bar + hide keyboard hints ───────────────────── */
 @media (max-width: 600px) {
   /* Hide keyboard shortcut hints — not relevant on touch */

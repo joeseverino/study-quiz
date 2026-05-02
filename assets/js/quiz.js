@@ -54,9 +54,14 @@ let sessionId    = null;
 let sessionRight = 0;
 let sessionTotal = 0;
 let sessionByMod = {};
-let answered     = false;
-let currentQ     = null;
-let quizActive   = false;
+let answered         = false;
+let currentQ         = null;
+let quizActive       = false;
+let currentStreak    = 0;
+let bestStreak       = 0;
+let wrongAnswers     = [];   // questions answered wrong this session
+let sessionStartTime = null;
+let shuffleMode      = true; // false = in original file order
 
 // Edit modal state
 let editView    = 'list';
@@ -163,7 +168,11 @@ function localRecordAnswer(sid, questionId, moduleId, correct, questionObj) {
 function localEndSession(id) {
   const sessions = getSessions();
   const s = sessions.find(x => x.id === id);
-  if (s) s.ended_at = new Date().toISOString();
+  if (s) {
+    s.ended_at = new Date().toISOString();
+    if (sessionStartTime) s.duration_seconds = Math.round((Date.now() - sessionStartTime) / 1000);
+    s.best_streak = bestStreak;
+  }
   saveSessions(sessions);
 }
 
@@ -680,8 +689,13 @@ function renderModalModuleSelector() {
       ${loadedDesc ? `<div style="font-size:13px;color:var(--text-3);margin-top:3px">${escapeHtml(loadedDesc)}</div>` : ''}
       <div style="font-size:12px;color:var(--text-3);margin-top:4px">${allQuestions.length} questions</div>
     </div>
-    <p style="font-size:13px;color:var(--text-3);margin-bottom:14px">Pick modules to study. Questions are randomized every session.</p>
+    <p style="font-size:13px;color:var(--text-3);margin-bottom:14px">Pick modules to study.</p>
     <div class="mod-grid" id="mod-grid"></div>
+    <label class="shuffle-toggle" style="margin-top:14px">
+      <input type="checkbox" id="shuffle-chk" ${shuffleMode ? 'checked' : ''}
+             onchange="shuffleMode = this.checked">
+      <span>Shuffle questions</span>
+    </label>
     <button id="start-btn" class="btn btn-primary btn-block mt-1" onclick="modalStartQuiz()" disabled>Start →</button>`;
   renderModuleGrid();
   selectAll();
@@ -1082,17 +1096,21 @@ function startQuiz() {
     saveDeckStats(activeDeckId, obj);
   }
 
-  quizActive   = false;
-  const pool   = allQuestions.filter(q => selectedMods.has(q.mod));
-  deck         = shuffle(pool);
-  deckPos      = 0;
-  round        = 1;
-  sessionRight = 0;
-  sessionTotal = 0;
-  sessionByMod = {};
-  answered     = false;
-  sessionId    = localStartSession([...selectedMods]);
-  quizActive   = true;
+  quizActive       = false;
+  const pool       = allQuestions.filter(q => selectedMods.has(q.mod));
+  deck             = shuffleMode ? shuffle(pool) : [...pool];
+  deckPos          = 0;
+  round            = 1;
+  sessionRight     = 0;
+  sessionTotal     = 0;
+  sessionByMod     = {};
+  answered         = false;
+  currentStreak    = 0;
+  bestStreak       = 0;
+  wrongAnswers     = [];
+  sessionStartTime = Date.now();
+  sessionId        = localStartSession([...selectedMods]);
+  quizActive       = true;
   restoreQuizShell();
   setView('quiz');
   renderQuestion();
@@ -1177,21 +1195,57 @@ async function pickAnswer(chosen) {
   sessionByMod[currentQ.mod].total++;
   if (correct) sessionByMod[currentQ.mod].right++;
 
+  // Streak tracking
+  if (correct) {
+    currentStreak++;
+    if (currentStreak > bestStreak) bestStreak = currentStreak;
+  } else {
+    wrongAnswers.push(currentQ);
+    currentStreak = 0;
+  }
+
   const expHtml = currentQ.exp ? `<div class="fb-explain">${escapeHtml(currentQ.exp)}</div>` : '';
+  const streakHtml = currentStreak >= 3
+    ? `<div class="streak-badge">🔥 ${currentStreak} in a row</div>` : '';
+  const qid = currentQ.id;
+
   const fb = $('#q-fb');
   if (correct) {
     fb.className = 'fb ok';
-    fb.innerHTML = `<div class="fb-label">Correct!</div>${expHtml}`;
+    fb.innerHTML = `<div class="fb-label">Correct!</div>${streakHtml}${expHtml}`;
   } else {
     fb.className = 'fb bad';
     fb.innerHTML = `<div class="fb-label">Not quite — correct: <strong>${escapeHtml(currentQ.opts[currentQ.ans])}</strong></div>${expHtml}`;
   }
+
+  // Confidence tap buttons
+  const confHtml = `<div class="conf-row">
+    <span class="conf-label">How did that feel?</span>
+    <button class="conf-btn conf-got-it"   onclick="markConfidence('${qid}','known')">✓ Got it</button>
+    <button class="conf-btn conf-shaky"    onclick="markConfidence('${qid}','shaky')">~ Still shaky</button>
+  </div>`;
+  fb.innerHTML += confHtml;
+
   fb.style.display = 'block';
   $('#btn-next').classList.remove('hidden');
   $('#kbd-hint').innerHTML = 'Press <kbd>Space</kbd> <kbd>→</kbd> or <kbd>Enter</kbd> for next';
-  $('#session-score').textContent = `Session: ${sessionRight} / ${sessionTotal} correct`;
+
+  const streakText = currentStreak >= 2 ? `  🔥 ${currentStreak}` : '';
+  $('#session-score').textContent = `Session: ${sessionRight} / ${sessionTotal} correct${streakText}`;
 
   if (sessionId) localRecordAnswer(sessionId, currentQ.id, currentQ.mod, correct ? 1 : 0, currentQ);
+}
+
+function markConfidence(questionId, level) {
+  const qstats = getQStats();
+  if (qstats[questionId]) {
+    qstats[questionId].confidence = level;
+    saveQStats(qstats);
+  }
+  // Update button visuals
+  $$('.conf-btn').forEach(b => b.classList.remove('conf-selected'));
+  const sel = level === 'known' ? '.conf-got-it' : '.conf-shaky';
+  $(sel)?.classList.add('conf-selected');
 }
 
 // ── Keyboard shortcuts ─────────────────────────────────────────────────────
@@ -1255,12 +1309,24 @@ function showResults() {
   const circ = 2 * Math.PI * r;
   const dash = (circ * pct / 100).toFixed(1);
 
+  // Timer
+  const elapsed  = sessionStartTime ? Math.round((Date.now() - sessionStartTime) / 1000) : 0;
+  const mins     = Math.floor(elapsed / 60);
+  const secs     = elapsed % 60;
+  const timeStr  = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+
   const modRows = Object.entries(sessionByMod)
     .map(([id, m]) => `
       <div class="mod-row">
         <span class="mod-row-name">M${id}: ${escapeHtml(m.name || '')}</span>
         <span class="mod-row-score">${m.right}/${m.total}</span>
       </div>`).join('');
+
+  const retryBtn = wrongAnswers.length > 0
+    ? `<button class="btn btn-primary" onclick="drillWrongAnswers()">Retry missed (${wrongAnswers.length}) →</button>`
+    : '';
+  const streakLine = bestStreak >= 3
+    ? `<div class="result-streak">🔥 Best streak: ${bestStreak} in a row</div>` : '';
 
   $('#page-quiz').innerHTML = `
     <div class="card results-center">
@@ -1273,28 +1339,70 @@ function showResults() {
         <div class="score-pct">${pct}%</div>
       </div>
       <div class="result-grade" style="color:${gc}">${grade}</div>
-      <div class="result-sub">${sessionRight} of ${n} correct · ${round > 1 ? round + ' rounds' : 'Round 1'}</div>
+      <div class="result-sub">${sessionRight} of ${n} correct · ${timeStr}</div>
+      ${streakLine}
       <div class="stats-grid">
         <div class="stat-box"><div class="stat-val" style="color:var(--green)">${sessionRight}</div><div class="stat-lbl">Correct</div></div>
         <div class="stat-box"><div class="stat-val" style="color:var(--red)">${n - sessionRight}</div><div class="stat-lbl">Wrong</div></div>
-        <div class="stat-box"><div class="stat-val">${n}</div><div class="stat-lbl">Answered</div></div>
+        <div class="stat-box"><div class="stat-val">${timeStr}</div><div class="stat-lbl">Time</div></div>
       </div>
       ${Object.keys(sessionByMod).length > 1 ? `
         <div class="mod-breakdown">
           <div class="section-title">By module</div>${modRows}
         </div>` : ''}
       <div class="result-btns">
-        <button class="btn btn-primary" onclick="restartSame()">Go again →</button>
+        ${retryBtn}
+        <button class="btn ${wrongAnswers.length === 0 ? 'btn-primary' : ''}" onclick="restartSame()">Go again →</button>
         <button class="btn" onclick="setView('home')">Change modules</button>
       </div>
     </div>`;
 }
 
+function drillWrongAnswers() {
+  if (!wrongAnswers.length) return;
+  if (sessionId) { localEndSession(sessionId); }
+  const pool       = [...new Map(wrongAnswers.map(q => [q.id, q])).values()]; // dedupe
+  deck             = shuffle(pool);
+  deckPos          = 0; round = 1;
+  sessionRight     = 0; sessionTotal = 0; sessionByMod = {};
+  currentStreak    = 0; bestStreak = 0; wrongAnswers = [];
+  sessionStartTime = Date.now();
+  sessionId        = localStartSession([...selectedMods]);
+  quizActive       = true;
+  restoreQuizShell();
+  renderQuestion();
+}
+
 function restartSame() {
-  deck = shuffle(getPool()); deckPos = 0; round = 1;
-  sessionRight = 0; sessionTotal = 0; sessionByMod = {};
-  answered = false;
-  sessionId = localStartSession([...selectedMods]);
+  if (sessionId) { localEndSession(sessionId); }
+  deck             = shuffleMode ? shuffle(getPool()) : [...getPool()];
+  deckPos          = 0; round = 1;
+  sessionRight     = 0; sessionTotal = 0; sessionByMod = {};
+  currentStreak    = 0; bestStreak = 0; wrongAnswers = [];
+  sessionStartTime = Date.now();
+  answered         = false;
+  sessionId        = localStartSession([...selectedMods]);
+  restoreQuizShell();
+  renderQuestion();
+}
+
+function drillWeakSpots() {
+  const { weak } = localGetStats();
+  if (!weak.length) return;
+  // Resolve full question objects from allQuestions
+  const pool = weak
+    .map(w => allQuestions.find(q => String(q.id) === String(w.question_id)))
+    .filter(Boolean);
+  if (!pool.length) return;
+  setView('quiz');
+  if (sessionId) { localEndSession(sessionId); }
+  deck             = shuffle(pool);
+  deckPos          = 0; round = 1;
+  sessionRight     = 0; sessionTotal = 0; sessionByMod = {};
+  currentStreak    = 0; bestStreak = 0; wrongAnswers = [];
+  sessionStartTime = Date.now();
+  sessionId        = localStartSession([...selectedMods]);
+  quizActive       = true;
   restoreQuizShell();
   renderQuestion();
 }
@@ -1363,7 +1471,10 @@ function loadStats() {
         <div class="stat-box"><div class="stat-val">${ta}</div><div class="stat-lbl">Answered</div></div>
         <div class="stat-box"><div class="stat-val">${pct}%</div><div class="stat-lbl">Overall</div></div>
       </div>
-      <div class="section-title">Weakest questions (≥ 2 attempts)</div>
+      <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+        <span>Weakest questions (≥ 2 attempts)</span>
+        ${weak.length > 0 ? `<button class="btn btn-sm btn-primary" onclick="drillWeakSpots()">Drill these →</button>` : ''}
+      </div>
       <div class="weak-list">${weakRows}</div>
       <div class="section-title mt-2">Recent sessions</div>
       <div class="card" style="padding:0;overflow:hidden">
@@ -1394,10 +1505,30 @@ function closeMenu() {
 
 function updateMenuStates() {
   const has = allQuestions.length > 0;
-  const el = document.getElementById('mi-export');
-  if (el) el.disabled = !has;
+  ['mi-edit','mi-export'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !has;
+  });
 }
 
+function menuEdit() {
+  closeMenu();
+  allQuestions = JSON.parse(JSON.stringify(allQuestions));
+  // If a question is currently on screen, jump straight to editing it
+  if (currentQ) {
+    const idx = allQuestions.findIndex(q => q.id === currentQ.id);
+    if (idx !== -1) {
+      editCardIdx = idx;
+      editView    = 'edit';
+      openModal('edit');
+      return;
+    }
+  }
+  // Fallback: open the full list
+  editView    = 'list';
+  editCardIdx = null;
+  openModal('edit');
+}
 function menuExport() { closeMenu(); exportLoadedDeck(); }
 
 function menuResetConfirm() {

@@ -216,7 +216,7 @@ function toggleFlag(qid) {
   saveQStats(qs);
   const btn = document.getElementById('flag-btn');
   if (btn) btn.classList.toggle('is-flagged', s.flagged);
-  if (currentView === 'cards') renderCardsView();
+  if (currentView === 'cards') renderCardRows();
 }
 
 function buildSRSQueue() {
@@ -306,33 +306,54 @@ function renderCardsView() {
     el.innerHTML = `<div class="cards-empty">Add a deck to get started.</div>`;
     return;
   }
-  const qs      = getQStats();
+  const counts  = getStateCounts(activeDeckId);
   const filters = ['all','new','learning','review','known','flagged'];
   const labels  = { all:'All', new:`${ICONS.newCard} New`, learning:`${ICONS.learning} Learning`, review:`${ICONS.review} Review`, known:`${ICONS.known} Known`, flagged:`${ICONS.flag} Flagged` };
-  const counts  = getStateCounts(activeDeckId);
 
   const filterBtns = filters.map(f => {
-    const cnt  = f === 'all' ? allQuestions.length : counts[f] || 0;
+    const cnt    = f === 'all' ? allQuestions.length : counts[f] || 0;
     const active = cardsFilter === f ? ' active' : '';
-    return `<button class="cards-filter-btn${active}" onclick="setCardsFilter('${f}')">${labels[f]} <span style="opacity:.7">${cnt}</span></button>`;
+    return `<button class="cards-filter-btn${active}" data-filter="${f}" onclick="setCardsFilter('${f}')">${labels[f]} <span class="filter-count">${cnt}</span></button>`;
   }).join('');
 
+  // Render shell only — rows live in #cards-rows and are updated by renderCardRows()
+  el.innerHTML = `
+    <div class="cards-header">
+      <div class="cards-title">${escapeHtml(loadedTitle || 'Cards')}</div>
+      <input class="cards-search" type="search" placeholder="Search…" autocomplete="off"
+        value="${escapeHtml(cardsSearch)}">
+    </div>
+    <div class="cards-filter-bar">${filterBtns}</div>
+    <div id="cards-rows"></div>`;
+
+  // Attach listener AFTER injecting HTML so the element exists
+  const inp = el.querySelector('.cards-search');
+  if (inp) {
+    inp.addEventListener('input', e => { cardsSearch = e.target.value; renderCardRows(); });
+  }
+  renderCardRows();
+}
+
+function renderCardRows() {
+  const rowsEl = document.getElementById('cards-rows');
+  if (!rowsEl) return;
+  const qs = getQStats();
   let cards = allQuestions;
   if (cardsFilter !== 'all') {
-    if (cardsFilter === 'flagged') {
-      cards = cards.filter(q => qs[q.id]?.flagged);
-    } else {
-      cards = cards.filter(q => (qs[q.id]?.state || 'new') === cardsFilter);
-    }
+    cards = cardsFilter === 'flagged'
+      ? cards.filter(q => qs[q.id]?.flagged)
+      : cards.filter(q => (qs[q.id]?.state || 'new') === cardsFilter);
   }
   if (cardsSearch.trim()) {
     const term = cardsSearch.trim().toLowerCase();
-    cards = cards.filter(q => q.q.toLowerCase().includes(term));
+    cards = cards.filter(q =>
+      q.q.toLowerCase().includes(term) ||
+      (q.opts && q.opts.some(o => o.toLowerCase().includes(term)))
+    );
   }
-
-  const rows = cards.map(q => {
-    const s     = { ...DEFAULT_SRS(), ...(qs[q.id] || {}) };
-    const state = s.state || 'new';
+  rowsEl.innerHTML = cards.map(q => {
+    const s       = { ...DEFAULT_SRS(), ...(qs[q.id] || {}) };
+    const state   = s.state || 'new';
     const flagCls = s.flagged ? ' is-flagged' : '';
     return `<div class="card-row">
       <div class="card-row-q" title="${escapeHtml(q.q)}">${escapeHtml(q.q)}</div>
@@ -340,20 +361,17 @@ function renderCardsView() {
       <span class="state-badge state-${state}">${state}</span>
       <button class="card-row-flag${flagCls}" onclick="toggleFlag('${q.id}')" title="${s.flagged ? 'Unflag' : 'Flag'}">${ICONS.flag}</button>
     </div>`;
-  }).join('');
-
-  el.innerHTML = `
-    <div class="cards-header">
-      <div class="cards-title">${escapeHtml(loadedTitle || 'Cards')}</div>
-      <input class="cards-search" type="search" placeholder="Search cards…"
-        value="${escapeHtml(cardsSearch)}"
-        oninput="cardsSearch=this.value;renderCardsView()">
-    </div>
-    <div class="cards-filter-bar">${filterBtns}</div>
-    ${rows || `<div class="cards-empty">No cards match.</div>`}`;
+  }).join('') || `<div class="cards-empty">No cards match.</div>`;
 }
 
-function setCardsFilter(f) { cardsFilter = f; renderCardsView(); }
+function setCardsFilter(f) {
+  cardsFilter = f;
+  // Update active class without rebuilding the whole shell
+  document.querySelectorAll('.cards-filter-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.filter === f)
+  );
+  renderCardRows();
+}
 
 function localStartSession(modules) {
   const session = { id: Date.now(), modules, correct:0, total:0,

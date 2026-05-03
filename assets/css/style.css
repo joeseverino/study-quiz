@@ -245,7 +245,7 @@ nav button.active { background: var(--surface2); color: var(--text); font-weight
 .menu-confirm-btns .btn { flex: 1; font-size: 12px; padding: 5px 10px; }
 .menu-confirm-btns .btn:first-child { color: var(--red); border-color: currentColor; }
 
-main { padding: 2rem 1rem; max-width: 680px; margin: 0 auto; width: 100%; }
+main { padding: 2rem 1rem; max-width: 680px; margin: 0 auto; width: 100%; overflow-x: hidden; box-sizing: border-box; }
 
 /* ── Cards ────────────────────────────────────────────────────────────── */
 .card {
@@ -276,8 +276,10 @@ button, .btn {
   line-height: 1.4;
 }
 button:hover:not(:disabled), .btn:hover { background: var(--surface2); border-color: var(--border-med); }
-button:active:not(:disabled) { transform: scale(.98); }
+button:active:not(:disabled) { transform: scale(.97); opacity: .82; }
 button:disabled { opacity: .4; cursor: not-allowed; }
+/* Suppress native mobile highlight so our active state shows cleanly */
+button, .btn, a { -webkit-tap-highlight-color: transparent; }
 
 .btn-primary {
   background: var(--text);
@@ -286,6 +288,7 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   font-weight: 500;
 }
 .btn-primary:hover:not(:disabled) { background: var(--text-2); color: var(--surface); border-color: transparent; }
+.btn-primary:active:not(:disabled) { background: var(--text); color: var(--surface); opacity: .8; transform: scale(.97); }
 
 .btn-block { width: 100%; }
 .btn-sm { padding: 6px 12px; font-size: 13px; }
@@ -587,13 +590,17 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   .mod-grid { grid-template-columns: 1fr 1fr; }
   .q-text { font-size: 15px; }
   header { padding: 0 1rem; }
-  .deck-entry { overflow: hidden; }
+  .deck-entry { overflow: hidden; min-width: 0; }
   .deck-entry-btns { flex-shrink: 0; gap: 6px; }
   .deck-study-btn { font-size: 13px; padding: 7px 12px; }
-  .cards-filter-btn { font-size: 11px; padding: 4px 10px; }
+  .cards-filter-btn { font-size: 11px; padding: 4px 9px; }
   .mode-toggle-btn { font-size: 12px; padding: 8px 8px; }
   .card-row-mod { display: none; }
   .state-badge { font-size: 9px; padding: 2px 5px; }
+  /* Cards page: tighter padding on very small screens */
+  #page-cards { padding: 1rem 0.75rem 2rem; }
+  .cards-header { flex-direction: row; align-items: center; }
+  .cards-search { max-width: 180px; }
 }
 
 /* ── Home page layout ─────────────────────────────────────────────────── */
@@ -870,10 +877,26 @@ body.view-home {
   box-shadow: 0 24px 64px rgba(0, 0, 0, .28);
   width: 100%;
   max-width: 680px;
-  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
+}
+
+/* Bottom-sheet modal on mobile */
+@media (max-width: 540px) {
+  #modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  #modal-box {
+    border-radius: 20px 20px 0 0;
+    max-height: 88dvh;
+    width: 100%;
+    max-width: 100%;
+    border-bottom: none;
+  }
 }
 
 #modal-header {
@@ -1465,27 +1488,41 @@ body.view-home {
 .exam-countdown.urgent { color: #ef4444; }
 
 /* ── Cards view ───────────────────────────────────────────────────────── */
-#page-cards { overflow-x: hidden; box-sizing: border-box; }
+#page-cards {
+  overflow-x: hidden;
+  box-sizing: border-box;
+  padding: 1.5rem 1.25rem 2rem;
+  min-width: 0;
+  width: 100%;
+}
+
+#cards-rows { width: 100%; min-width: 0; }
 
 .cards-header {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 14px; gap: 10px; flex-wrap: wrap;
+  min-width: 0; width: 100%;
 }
-.cards-title { font-size: 17px; font-weight: 700; color: var(--text); }
+.cards-title { font-size: 17px; font-weight: 700; color: var(--text); flex-shrink: 0; }
 .cards-search {
-  flex: 1; min-width: 130px; max-width: 260px;
+  flex: 1; min-width: 0; max-width: 260px; width: 100%;
+  box-sizing: border-box;
   padding: 8px 12px; border-radius: 10px;
   border: 1px solid var(--border);
   background: rgba(255,255,255,.75); backdrop-filter: blur(8px);
   font-size: 13px; color: var(--text); outline: none;
   transition: border-color .15s;
+  /* Prevent iOS zoom on focus */
+  font-size: max(16px, 13px);
 }
 .cards-search:focus { border-color: var(--green-mid); }
 .cards-filter-bar {
-  display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px;
+  display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px;
   margin-bottom: 12px; scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
+  /* Never allow this bar to cause horizontal page overflow */
+  max-width: 100%; box-sizing: border-box;
 }
 .cards-filter-bar::-webkit-scrollbar { display: none; }
 .cards-filter-btn {
@@ -1493,10 +1530,14 @@ body.view-home {
   border: 1px solid var(--border);
   background: rgba(255,255,255,.6);
   font-size: 12px; font-weight: 500; color: var(--text-2);
-  cursor: pointer; transition: all .15s; white-space: nowrap;
+  cursor: pointer; transition: background .15s, color .15s, border-color .15s; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 5px;
 }
 .cards-filter-btn.active { background: var(--green-mid); color: #fff; border-color: transparent; }
 .cards-filter-btn:not(.active):hover { background: rgba(255,255,255,.9); color: var(--text); }
+.cards-filter-btn:active { transform: scale(.96); opacity: .85; }
+.filter-count { opacity: .7; }
+
 .card-row {
   display: flex; align-items: center; gap: 10px;
   padding: 11px 14px; border-radius: 12px;
@@ -1505,7 +1546,8 @@ body.view-home {
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid rgba(255,255,255,.55);
   margin-bottom: 6px; transition: box-shadow .15s;
-  overflow: hidden; max-width: 100%;
+  overflow: hidden; max-width: 100%; box-sizing: border-box;
+  min-width: 0;
 }
 .card-row:hover { box-shadow: 0 4px 14px rgba(0,0,0,.07); }
 .card-row-q {
@@ -1525,6 +1567,7 @@ body.view-home {
   transition: color .15s, background .15s;
 }
 .card-row-flag:hover   { background: rgba(239,68,68,.1); color: #ef4444; }
+.card-row-flag:active  { background: rgba(239,68,68,.18); color: #ef4444; transform: scale(.92); }
 .card-row-flag.is-flagged { color: #ef4444; }
 .cards-empty {
   text-align: center; padding: 3rem 1rem;

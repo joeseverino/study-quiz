@@ -76,7 +76,7 @@
             <div class="resume-title">Continue session</div>
             <div class="resume-sub" id="resume-sub"></div>
           </div>
-          <div class="resume-arrow">→</div>
+          <div class="resume-arrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></div>
         </div>
 
         <!-- My Decks switcher (populated by JS) -->
@@ -134,7 +134,7 @@
 
         </div><!-- /.mode-grid -->
       </div><!-- /.home-content -->
-      <a class="home-footer-link" href="https://jseverino.com" target="_blank" rel="noopener noreferrer">Visit jseverino.com →</a>
+      <a class="home-footer-link" href="https://jseverino.com" target="_blank" rel="noopener noreferrer">Visit jseverino.com <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
     </div>
 
     <!-- ── Quiz ───────────────────────────────────────────────────────────── -->
@@ -166,7 +166,7 @@
 <!-- ── Quiz action footer (sticky, shown after answering) ─────────────────── -->
 <div id="quiz-footer" class="quiz-footer quiz-footer-hidden">
   <button class="btn btn-back" onclick="quitQuiz()">← Go Back</button>
-  <button class="btn btn-primary" id="btn-next" onclick="nextQuestion()">Next →</button>
+  <button class="btn btn-primary" id="btn-next" onclick="nextQuestion()">Next <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
 </div>
 
 <script src="assets/js/quiz.js?v=24"></script>

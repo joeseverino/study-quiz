@@ -587,6 +587,13 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   .mod-grid { grid-template-columns: 1fr 1fr; }
   .q-text { font-size: 15px; }
   header { padding: 0 1rem; }
+  .deck-entry { overflow: hidden; }
+  .deck-entry-btns { flex-shrink: 0; gap: 6px; }
+  .deck-study-btn { font-size: 13px; padding: 7px 12px; }
+  .cards-filter-btn { font-size: 11px; padding: 4px 10px; }
+  .mode-toggle-btn { font-size: 12px; padding: 8px 8px; }
+  .card-row-mod { display: none; }
+  .state-badge { font-size: 9px; padding: 2px 5px; }
 }
 
 /* ── Home page layout ─────────────────────────────────────────────────── */
@@ -675,7 +682,7 @@ body.view-home {
 .resume-info  { flex: 1; min-width: 0; }
 .resume-title { font-size: 14px; font-weight: 600; color: var(--text); }
 .resume-sub   { font-size: 12px; color: var(--text-2); margin-top: 2px; }
-.resume-arrow { font-size: 16px; color: var(--green-mid); flex-shrink: 0; }
+.resume-arrow { color: var(--green-mid); flex-shrink: 0; display: flex; align-items: center; }
 
 @media (prefers-color-scheme: dark) {
   #resume-card {
@@ -1151,6 +1158,7 @@ body.view-home {
   justify-content: space-between;
   gap: 16px;
   padding: 14px 18px;
+  overflow: hidden;
   background: rgba(255,255,255,0.72);
   backdrop-filter: blur(28px) saturate(180%);
   -webkit-backdrop-filter: blur(28px) saturate(180%);
@@ -1172,10 +1180,12 @@ body.view-home {
   min-width: 0;
 }
 .deck-entry-icon {
-  font-size: 22px;
-  line-height: 1;
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  background: var(--surface2);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-2);
   flex-shrink: 0;
-  margin-top: 1px;
 }
 .deck-entry-info { flex: 1; min-width: 0; }
 .deck-entry-title {
@@ -1255,16 +1265,16 @@ body.view-home {
 .streak-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  background: linear-gradient(135deg, #ff6b35, #ff9a3c);
-  color: #fff;
-  font-size: 0.78rem;
+  gap: 5px;
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  color: white;
+  font-size: 11px;
   font-weight: 700;
-  padding: 3px 10px;
-  border-radius: 20px;
+  letter-spacing: .02em;
+  padding: 3px 10px 3px 8px;
+  border-radius: 99px;
   margin: 6px 0 2px;
-  letter-spacing: 0.02em;
-  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.35);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
   animation: streak-pop 0.25s cubic-bezier(0.34,1.56,0.64,1);
 }
 @keyframes streak-pop {
@@ -1410,12 +1420,13 @@ body.view-home {
 /* ── Flag button (in quiz meta-row) ───────────────────────────────────── */
 .flag-btn {
   margin-left: auto; background: none; border: none; cursor: pointer;
-  color: var(--text-3); font-size: 15px; padding: 3px 6px;
+  color: var(--text-3); padding: 5px 7px;
   border-radius: 8px; line-height: 1; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
   transition: color .15s, background .15s;
 }
 .flag-btn:hover    { background: rgba(239,68,68,.1); color: #ef4444; }
-.flag-btn.is-flagged { color: #ef4444; }
+.flag-btn.is-flagged { background: rgba(239,68,68,.12); color: #ef4444; border-radius: 8px; }
 
 /* ── Study mode toggle ────────────────────────────────────────────────── */
 .mode-toggle {
@@ -1427,6 +1438,7 @@ body.view-home {
   background: rgba(255,255,255,.5); backdrop-filter: blur(8px);
   color: var(--text-2); font-size: 13px; font-weight: 500;
   cursor: pointer; transition: all .15s;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
 }
 .mode-toggle-btn.active {
   background: var(--green-mid); color: #fff; border-color: transparent;
@@ -1439,7 +1451,7 @@ body.view-home {
   display: flex; height: 4px; border-radius: 2px; overflow: hidden;
   margin-top: 8px; width: 100%;
 }
-.mastery-seg          { height: 100%; min-width: 0; }
+.mastery-seg          { height: 100%; min-width: 0; flex-shrink: 1; }
 .mastery-seg.new      { background: rgba(120,120,130,.2); }
 .mastery-seg.learning { background: #eab308; }
 .mastery-seg.review   { background: #3b82f6; }
@@ -1447,12 +1459,14 @@ body.view-home {
 
 /* ── Exam countdown line ──────────────────────────────────────────────── */
 .exam-countdown {
-  display: flex; align-items: center; gap: 4px;
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
   font-size: 11px; color: var(--text-3); margin-top: 5px; font-weight: 500;
 }
 .exam-countdown.urgent { color: #ef4444; }
 
 /* ── Cards view ───────────────────────────────────────────────────────── */
+#page-cards { overflow-x: hidden; box-sizing: border-box; }
+
 .cards-header {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 14px; gap: 10px; flex-wrap: wrap;
@@ -1470,6 +1484,8 @@ body.view-home {
 .cards-filter-bar {
   display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px;
   margin-bottom: 12px; scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 .cards-filter-bar::-webkit-scrollbar { display: none; }
 .cards-filter-btn {
@@ -1489,6 +1505,7 @@ body.view-home {
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid rgba(255,255,255,.55);
   margin-bottom: 6px; transition: box-shadow .15s;
+  overflow: hidden; max-width: 100%;
 }
 .card-row:hover { box-shadow: 0 4px 14px rgba(0,0,0,.07); }
 .card-row-q {
@@ -1502,8 +1519,9 @@ body.view-home {
 }
 .card-row-flag {
   background: none; border: none; cursor: pointer;
-  color: var(--text-3); font-size: 14px; padding: 3px 5px;
+  color: var(--text-3); padding: 4px 5px;
   border-radius: 6px; flex-shrink: 0; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
   transition: color .15s, background .15s;
 }
 .card-row-flag:hover   { background: rgba(239,68,68,.1); color: #ef4444; }

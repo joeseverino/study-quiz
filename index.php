@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CS6250 · Study Quiz</title>
-  <link rel="stylesheet" href="assets/css/style.css?v=23">
+  <title>Study Quiz</title>
+  <link rel="stylesheet" href="assets/css/style.css?v=25">
 </head>
 <body>
 
@@ -15,8 +15,9 @@
   <header>
     <a class="logo" href="#" onclick="setView('home');return false;">
       <span class="logo-dot"></span>
-      CS6250 · Study Quiz
+      Study Quiz
     </a>
+    <div id="header-context" class="header-context" aria-live="polite"></div>
     <div class="header-right">
       <nav>
         <button data-view="home" class="active">Quiz</button>
@@ -158,6 +159,12 @@
   </div>
 </div>
 
-<script src="assets/js/quiz.js?v=20"></script>
+<!-- ── Quiz action footer (sticky, shown after answering) ─────────────────── -->
+<div id="quiz-footer" class="quiz-footer quiz-footer-hidden">
+  <button class="btn btn-back" onclick="quitQuiz()">← Go Back</button>
+  <button class="btn btn-primary" id="btn-next" onclick="nextQuestion()">Next →</button>
+</div>
+
+<script src="assets/js/quiz.js?v=23"></script>
 </body>
 </html>

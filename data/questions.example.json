@@ -1,20 +1,54 @@
 {
-  "title": "My Question Deck",
+  "title": "My Deck",
   "description": "A short description of what this deck covers.",
   "questions": [
     {
-      "id": "m7_0",
-      "mod": 7,
-      "mod_name": "SDN Foundations",
-      "q": "What is the question text?",
+      "id": "m1_1",
+      "mod": 1,
+      "mod_name": "Introduction",
+      "q": "What does HTTP stand for?",
       "opts": [
-        "Option A",
-        "Option B",
-        "Option C",
-        "Option D"
+        "HyperText Transfer Protocol",
+        "High Transfer Text Protocol",
+        "HyperText Transmission Protocol",
+        "Hosted Text Transfer Protocol"
       ],
       "ans": 0,
-      "exp": "Explanation shown when the user answers incorrectly."
+      "exp": "HTTP stands for HyperText Transfer Protocol. It is the foundation of data communication on the web."
+    },
+    {
+      "id": "m1_2",
+      "mod": 1,
+      "mod_name": "Introduction",
+      "q": "Which layer of the OSI model is responsible for routing packets between networks?",
+      "opts": [
+        "Data Link",
+        "Transport",
+        "Network",
+        "Session"
+      ],
+      "ans": 2,
+      "exp": "The Network layer (Layer 3) is responsible for logical addressing and routing packets between different networks. IP operates at this layer."
+    },
+    {
+      "id": "m2_1",
+      "mod": 2,
+      "mod_name": "Core Concepts",
+      "q": "TCP provides guaranteed delivery of data.",
+      "type": "T/F",
+      "opts": ["True", "False"],
+      "ans": 0,
+      "exp": "True. TCP (Transmission Control Protocol) is a connection-oriented protocol that guarantees reliable, ordered, and error-checked delivery of data between applications."
+    },
+    {
+      "id": "m2_2",
+      "mod": 2,
+      "mod_name": "Core Concepts",
+      "q": "UDP is faster than TCP because it has less overhead.",
+      "type": "T/F",
+      "opts": ["True", "False"],
+      "ans": 0,
+      "exp": "True. UDP skips the connection handshake, acknowledgements, and retransmission logic that TCP requires, making it faster but unreliable — suitable for video streaming, gaming, and DNS."
     }
   ]
 }

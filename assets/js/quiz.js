@@ -313,6 +313,21 @@ function setView(v) {
   $('#page-quiz').classList.toggle('hidden',  v !== 'quiz');
   $('#page-stats').classList.toggle('hidden', v !== 'stats');
   document.body.classList.toggle('view-home', v === 'home');
+
+  // Header context: show deck name while studying
+  const ctx = document.getElementById('header-context');
+  if (ctx) {
+    if (v === 'quiz' && loadedTitle) {
+      ctx.textContent = loadedTitle;
+      ctx.classList.add('header-context-visible');
+    } else {
+      ctx.textContent = '';
+      ctx.classList.remove('header-context-visible');
+    }
+  }
+  // Hide the quiz footer whenever leaving quiz view
+  if (v !== 'quiz') $('#quiz-footer').classList.add('quiz-footer-hidden');
+
   updateMenuStates();
   if (v === 'stats') loadStats();
   if (v === 'home')  { updateResumeCard(); renderDeckSwitcher(); }
@@ -376,30 +391,11 @@ function renderDeckSwitcher() {
         <button class="btn btn-primary deck-study-btn" onclick="studyDeck('${id}')">Study →</button>
         <button class="btn" onclick="viewDeckStats('${id}')">Stats</button>
         <div class="deck-menu-wrap" id="dm-wrap-${id}">
-          <button class="deck-menu-btn" onclick="toggleDeckMenu(event,'${id}')" title="More options">
+          <button class="deck-menu-btn" id="dm-btn-${id}" onclick="toggleDeckMenu(event,'${id}')" title="More options">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
             </svg>
           </button>
-          <div class="deck-menu hidden" id="dm-${id}">
-            <button class="menu-item" onclick="editDeck('${id}')">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              Edit deck
-            </button>
-            <button class="menu-item" onclick="exportDeckById('${id}')">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Export deck JSON
-            </button>
-            <button class="menu-item" onclick="exportDeckState('${id}')">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Export save state
-            </button>
-            <div class="menu-divider"></div>
-            <button class="menu-item menu-item-danger" onclick="confirmRemoveDeck('${id}')">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-              Remove
-            </button>
-          </div>
         </div>
       </div>`;
     listEl.appendChild(card);
@@ -549,14 +545,51 @@ function exportDeckById(deckId) {
   URL.revokeObjectURL(url);
 }
 
-// Toggle a per-deck ⋯ dropdown (closes all others first)
+// Build the HTML for a per-deck ⋯ dropdown
+function buildDeckMenuHtml(id) {
+  const SVG = {
+    edit:   `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+    export: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+    trash:  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`,
+  };
+  return `
+    <button class="menu-item" onclick="closeDeckMenuPortal();editDeck('${id}')">${SVG.edit} Edit deck</button>
+    <button class="menu-item" onclick="closeDeckMenuPortal();exportDeckById('${id}')">${SVG.export} Export deck JSON</button>
+    <button class="menu-item" onclick="closeDeckMenuPortal();exportDeckState('${id}')">${SVG.export} Export save state</button>
+    <div class="menu-divider"></div>
+    <button class="menu-item menu-item-danger" onclick="closeDeckMenuPortal();confirmRemoveDeck('${id}')">${SVG.trash} Remove</button>`;
+}
+
+// Close the shared portal dropdown
+function closeDeckMenuPortal() {
+  const p = document.getElementById('dm-portal');
+  if (p) p.remove();
+}
+
+// Toggle a per-deck ⋯ dropdown via a body-level portal (bypasses backdrop-filter stacking contexts)
 function toggleDeckMenu(e, id) {
   e.stopPropagation();
-  const target = document.getElementById('dm-' + id);
-  if (!target) return;
-  const isOpen = !target.classList.contains('hidden');
-  document.querySelectorAll('.deck-menu').forEach(m => m.classList.add('hidden'));
-  if (!isOpen) target.classList.remove('hidden');
+  const existing = document.getElementById('dm-portal');
+  const alreadyOpen = existing && existing.dataset.deckId === id;
+  closeDeckMenuPortal();
+  if (alreadyOpen) return;
+
+  const btn  = document.getElementById('dm-btn-' + id);
+  if (!btn) return;
+  const rect = btn.getBoundingClientRect();
+
+  const portal = document.createElement('div');
+  portal.id            = 'dm-portal';
+  portal.className     = 'deck-menu';
+  portal.dataset.deckId = id;
+  portal.style.cssText = `
+    position: fixed;
+    top:  ${rect.bottom + 4}px;
+    right: ${window.innerWidth - rect.right}px;
+    z-index: 9999;
+  `;
+  portal.innerHTML = buildDeckMenuHtml(id);
+  document.body.appendChild(portal);
 }
 
 // Live-save deck name while user types in the Edit deck modal
@@ -1222,6 +1255,7 @@ function getPool() { return allQuestions.filter(q => selectedMods.has(q.mod)); }
 
 // ── Quiz shell ─────────────────────────────────────────────────────────────
 function restoreQuizShell() {
+  $('#quiz-footer').classList.add('quiz-footer-hidden');
   $('#page-quiz').innerHTML = `
     <div class="pbar-wrap"><div class="pbar-fill" id="pbar" style="width:0%"></div></div>
     <div class="meta-row">
@@ -1235,11 +1269,7 @@ function restoreQuizShell() {
       <div class="fb" id="q-fb"></div>
     </div>
     <div class="kbd-hint" id="kbd-hint"></div>
-    <div class="session-counter" id="session-score"></div>
-    <div class="action-row">
-      <button class="btn btn-primary hidden" id="btn-next" onclick="nextQuestion()">Next →</button>
-      <button class="btn btn-back" onclick="quitQuiz()">← Go Back</button>
-    </div>`;
+    <div class="session-counter" id="session-score"></div>`;
 }
 
 // ── Render question ────────────────────────────────────────────────────────
@@ -1269,7 +1299,7 @@ function renderQuestion() {
 
   const fb = $('#q-fb');
   fb.className = 'fb'; fb.style.display = 'none'; fb.innerHTML = '';
-  $('#btn-next').classList.add('hidden');
+  $('#quiz-footer').classList.add('quiz-footer-hidden');
 
   $('#kbd-hint').innerHTML = isTF
     ? 'Press <kbd>T</kbd> True &nbsp;·&nbsp; <kbd>F</kbd> False'
@@ -1329,8 +1359,8 @@ async function pickAnswer(chosen) {
   fb.innerHTML += confHtml;
 
   fb.style.display = 'block';
-  $('#btn-next').classList.remove('hidden');
-  $('#kbd-hint').innerHTML = 'Press <kbd>Space</kbd> <kbd>→</kbd> or <kbd>Enter</kbd> for next';
+  $('#quiz-footer').classList.remove('quiz-footer-hidden');
+  $('#kbd-hint').innerHTML = 'Press <kbd>Space</kbd> or <kbd>→</kbd> for next';
 
   const streakText = currentStreak >= 2 ? `  🔥 ${currentStreak}` : '';
   $('#session-score').textContent = `Session: ${sessionRight} / ${sessionTotal} correct${streakText}`;
@@ -1366,7 +1396,7 @@ document.addEventListener('keydown', e => {
       if (n >= 1 && n <= currentQ.opts.length) pickAnswer(n - 1);
     }
   } else {
-    if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') {
+    if (e.key === 'ArrowRight' || e.key === ' ') {
       e.preventDefault();
       nextQuestion();
     }
@@ -1799,13 +1829,15 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { closeMenu(); closeModal(); }
+    if (e.key === 'Escape') { closeMenu(); closeModal(); closeDeckMenuPortal(); }
   });
 
   document.addEventListener('click', e => {
     if (!document.getElementById('menu-wrap')?.contains(e.target)) closeMenu();
-    if (!e.target.closest?.('.deck-menu-wrap')) {
-      document.querySelectorAll('.deck-menu').forEach(m => m.classList.add('hidden'));
+    // Close portal deck menu when clicking outside it
+    const portal = document.getElementById('dm-portal');
+    if (portal && !portal.contains(e.target) && !e.target.closest?.('.deck-menu-btn')) {
+      closeDeckMenuPortal();
     }
   });
 

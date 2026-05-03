@@ -6,7 +6,9 @@
 // ── Storage key helpers ────────────────────────────────────────────────────
 const REGISTRY_KEY = 'cs6250_registry';   // { [deckId]: DeckMeta }
 const ACTIVE_KEY   = 'cs6250_active';     // active deckId string
-const CREATE_KEY   = 'cs6250_created';    // Question[] for builder
+const CREATE_KEY        = 'cs6250_created';       // Question[] for builder
+const CREATE_TITLE_KEY  = 'cs6250_created_title'; // deck name for builder
+const CREATE_DESC_KEY   = 'cs6250_created_desc';  // deck description for builder
 
 function deckQsKey(id)    { return `cs6250_qs_${id}`; }
 function deckStatsKey(id) { return `cs6250_stats_${id}`; }
@@ -380,13 +382,9 @@ function renderDeckSwitcher() {
             </svg>
           </button>
           <div class="deck-menu hidden" id="dm-${id}">
-            <button class="menu-item" onclick="openEditDetailsModal('${id}')">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-              Edit details
-            </button>
             <button class="menu-item" onclick="editDeck('${id}')">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              Edit cards
+              Edit deck
             </button>
             <button class="menu-item" onclick="exportDeckById('${id}')">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -561,36 +559,22 @@ function toggleDeckMenu(e, id) {
   if (!isOpen) target.classList.remove('hidden');
 }
 
-// Open a modal to edit deck name + description
-function openEditDetailsModal(deckId) {
-  const meta = getRegistry()[deckId];
-  if (!meta) return;
-  $('#modal-title').textContent = 'Edit deck details';
-  $('#modal-content').innerHTML = `
-    <div class="form-group">
-      <label>Deck name</label>
-      <input id="edit-details-name" type="text" value="${escapeHtml(meta.title || '')}" placeholder="Deck name">
-    </div>
-    <div class="form-group">
-      <label>Description <span class="form-optional">(optional)</span></label>
-      <textarea id="edit-details-desc" rows="2" placeholder="Short description">${escapeHtml(meta.description || '')}</textarea>
-    </div>
-    <div style="display:flex;gap:10px;margin-top:4px">
-      <button class="btn" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" style="flex:1" onclick="saveEditDetails('${deckId}')">Save</button>
-    </div>`;
-  $('#modal-overlay').classList.remove('hidden');
-  document.body.style.overflow = 'hidden';
-  setTimeout(() => document.getElementById('edit-details-name')?.focus(), 60);
+// Live-save deck name while user types in the Edit deck modal
+function saveDeckNameLive(val) {
+  if (!activeDeckId) return;
+  const trimmed = val.trim();
+  upsertDeckMeta(activeDeckId, { title: trimmed });
+  loadedTitle = trimmed;
+  // Update modal title to reflect new name
+  const n = getDeckQuestions(activeDeckId).length || allQuestions.length;
+  $('#modal-title').textContent = `Edit deck · ${n} card${n !== 1 ? 's' : ''}`;
 }
 
-function saveEditDetails(deckId) {
-  const name = (document.getElementById('edit-details-name')?.value || '').trim();
-  const desc = (document.getElementById('edit-details-desc')?.value || '').trim();
-  upsertDeckMeta(deckId, { title: name, description: desc });
-  if (deckId === activeDeckId) { loadedTitle = name; loadedDesc = desc; }
-  closeModal();
-  renderDeckSwitcher();
+// Live-save deck description while user types in the Edit deck modal
+function saveDeckDescLive(val) {
+  if (!activeDeckId) return;
+  upsertDeckMeta(activeDeckId, { description: val.trim() });
+  loadedDesc = val.trim();
 }
 
 // ── Modal system ───────────────────────────────────────────────────────────
@@ -862,8 +846,10 @@ function updateCreateCard() {
 function studyCreatedDeck() {
   const d = getCreatedDeck();
   if (!d.length) return;
+  const title = (localStorage.getItem(CREATE_TITLE_KEY) || '').trim() || 'My Deck';
+  const desc  = (localStorage.getItem(CREATE_DESC_KEY)  || '').trim() || '';
   registerAndLoadDeck({
-    id: 'deck_created', title: 'My Deck', description: 'Custom-built card deck.',
+    id: 'deck_created', title, description: desc,
     filename: 'my-deck.json', questions: d,
   });
 }
@@ -916,7 +902,9 @@ function renderCreateOptionRows() {
 }
 
 function renderCreateModal() {
-  const createdDeck = getCreatedDeck();
+  const createdDeck  = getCreatedDeck();
+  const storedTitle  = localStorage.getItem(CREATE_TITLE_KEY) || '';
+  const storedDesc   = localStorage.getItem(CREATE_DESC_KEY)  || '';
   $('#modal-title').textContent = 'Create deck';
   const cards = createdDeck.map((q, i) => `
     <div class="create-card-item">
@@ -934,6 +922,19 @@ function renderCreateModal() {
     </div>`).join('');
 
   $('#modal-content').innerHTML = `
+    <div class="deck-meta-fields">
+      <div class="form-group">
+        <label>Deck name</label>
+        <input id="create-deck-name" type="text" value="${escapeHtml(storedTitle)}" placeholder="My Deck"
+               oninput="localStorage.setItem('${CREATE_TITLE_KEY}', this.value)">
+      </div>
+      <div class="form-group">
+        <label>Description <span class="form-optional">(optional)</span></label>
+        <textarea id="create-deck-desc" rows="2" placeholder="What does this deck cover?"
+                  oninput="localStorage.setItem('${CREATE_DESC_KEY}', this.value)">${escapeHtml(storedDesc)}</textarea>
+      </div>
+    </div>
+    <hr class="deck-meta-divider">
     <div class="create-card-list" id="create-card-list">
       ${createdDeck.length > 0 ? cards
         : `<div class="empty-state" style="padding:2rem 0"><h3>No cards yet</h3><p>Add your first card below.</p></div>`}
@@ -975,8 +976,9 @@ function addCreateCard() {
   if (emptyIdx !== -1) { err.textContent = `Please fill in Option ${emptyIdx + 1}.`; err.style.display = ''; return; }
 
   const d = getCreatedDeck();
+  const deckTitle = (localStorage.getItem(CREATE_TITLE_KEY) || '').trim() || 'My Deck';
   d.push({
-    id: `created_${Date.now()}`, mod: 1, mod_name: 'My Deck', type: 'MCQ',
+    id: `created_${Date.now()}`, mod: 1, mod_name: deckTitle, type: 'MCQ',
     q: qText, opts: trimmedOpts, ans: createCorrect, exp,
   });
   saveCreatedDeck(d);
@@ -1047,7 +1049,9 @@ function renderEditModal() {
 }
 
 function renderEditList() {
-  $('#modal-title').textContent = `Edit deck · ${allQuestions.length} card${allQuestions.length !== 1 ? 's' : ''}`;
+  const n = allQuestions.length;
+  $('#modal-title').textContent = `Edit deck · ${n} card${n !== 1 ? 's' : ''}`;
+  const meta = activeDeckId ? (getRegistry()[activeDeckId] || {}) : {};
   const cards = allQuestions.map((q, i) => `
     <div class="create-card-item">
       <div class="create-card-num">${i + 1}</div>
@@ -1064,8 +1068,21 @@ function renderEditList() {
     </div>`).join('');
 
   $('#modal-content').innerHTML = `
+    <div class="deck-meta-fields">
+      <div class="form-group">
+        <label>Deck name</label>
+        <input id="edit-deck-name" type="text" value="${escapeHtml(meta.title || '')}" placeholder="Deck name"
+               oninput="saveDeckNameLive(this.value)">
+      </div>
+      <div class="form-group">
+        <label>Description <span class="form-optional">(optional)</span></label>
+        <textarea id="edit-deck-desc" rows="2" placeholder="Short description"
+                  oninput="saveDeckDescLive(this.value)">${escapeHtml(meta.description || '')}</textarea>
+      </div>
+    </div>
+    <hr class="deck-meta-divider">
     <div class="create-card-list">
-      ${allQuestions.length > 0 ? cards
+      ${n > 0 ? cards
         : `<div class="empty-state" style="padding:2rem 0"><h3>No cards</h3><p>Add some cards below.</p></div>`}
     </div>
     <div class="create-footer" style="margin-top:12px">
@@ -1492,6 +1509,71 @@ function drillWeakSpots() {
   renderQuestion();
 }
 
+// ── Accuracy-over-time SVG chart ───────────────────────────────────────────
+function renderAccuracyChart(sessions) {
+  const MIN_SESSIONS = 2;
+  const sorted = [...sessions]
+    .filter(s => s.ended_at && s.total > 0)
+    .sort((a, b) => new Date(a.started_at) - new Date(b.started_at))
+    .slice(-30); // last 30 sessions max
+
+  if (sorted.length < MIN_SESSIONS) return '';
+
+  const pts = sorted.map(s => Math.round(s.correct / s.total * 100));
+  const W = 520, H = 130, PAD = { top: 16, right: 16, bottom: 28, left: 36 };
+  const innerW = W - PAD.left - PAD.right;
+  const innerH = H - PAD.top  - PAD.bottom;
+
+  const xStep  = innerW / (pts.length - 1);
+  const yScale = v => innerH - (v / 100) * innerH;
+
+  // Polyline
+  const polyPts = pts.map((v, i) => `${PAD.left + i * xStep},${PAD.top + yScale(v)}`).join(' ');
+
+  // Area fill (close path down to baseline)
+  const first = `${PAD.left},${PAD.top + yScale(pts[0])}`;
+  const last  = `${PAD.left + (pts.length - 1) * xStep},${PAD.top + yScale(pts[pts.length - 1])}`;
+  const areaPath = `M${first} L${pts.map((v, i) => `${PAD.left + i * xStep},${PAD.top + yScale(v)}`).join(' L')} L${last.split(',')[0]},${PAD.top + innerH} L${PAD.left},${PAD.top + innerH} Z`;
+
+  // Y-axis labels: 0%, 50%, 100%
+  const yLabels = [0, 50, 100].map(v => {
+    const y = PAD.top + yScale(v);
+    return `<text x="${PAD.left - 6}" y="${y + 4}" text-anchor="end" class="chart-label">${v}%</text>
+            <line x1="${PAD.left}" y1="${y}" x2="${PAD.left + innerW}" y2="${y}" class="chart-grid"/>`;
+  }).join('');
+
+  // X-axis: first and last date labels
+  const fmtDate = iso => { try { return new Date(iso).toLocaleDateString('en-US', { month:'short', day:'numeric' }); } catch { return ''; } };
+  const xLabels = `
+    <text x="${PAD.left}" y="${H - 4}" text-anchor="start" class="chart-label">${fmtDate(sorted[0].started_at)}</text>
+    <text x="${PAD.left + innerW}" y="${H - 4}" text-anchor="end" class="chart-label">${fmtDate(sorted[sorted.length - 1].started_at)}</text>`;
+
+  // Dots
+  const dots = pts.map((v, i) => {
+    const cx = PAD.left + i * xStep, cy = PAD.top + yScale(v);
+    const cls = v >= 70 ? 'dot-good' : v >= 50 ? 'dot-mid' : 'dot-low';
+    return `<circle cx="${cx}" cy="${cy}" r="3.5" class="chart-dot ${cls}"><title>${v}% · ${fmtDate(sorted[i].started_at)}</title></circle>`;
+  }).join('');
+
+  return `
+    <div class="section-title" style="margin-top:20px">Accuracy over time</div>
+    <div class="card chart-card">
+      <svg viewBox="0 0 ${W} ${H}" class="accuracy-chart" aria-label="Accuracy over time">
+        <defs>
+          <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stop-color="var(--accent)" stop-opacity="0.25"/>
+            <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        ${yLabels}
+        <path d="${areaPath}" fill="url(#chartGrad)"/>
+        <polyline points="${polyPts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+        ${dots}
+        ${xLabels}
+      </svg>
+    </div>`;
+}
+
 // ── Stats page ─────────────────────────────────────────────────────────────
 function loadStats() {
   const page = $('#page-stats');
@@ -1584,6 +1666,8 @@ function loadStats() {
   // Drill button only works when the viewed deck is also the active deck
   const canDrill = weak.length > 0 && targets.length === 1 && targets[0] === activeDeckId && allQuestions.length > 0;
 
+  const chartHtml = renderAccuracyChart(sessions);
+
   page.innerHTML = `
     <div class="stats-page">
       <div class="stats-header">
@@ -1595,7 +1679,8 @@ function loadStats() {
         <div class="stat-box"><div class="stat-val">${ta}</div><div class="stat-lbl">Answered</div></div>
         <div class="stat-box"><div class="stat-val">${pct}%</div><div class="stat-lbl">Overall</div></div>
       </div>
-      <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+      ${chartHtml}
+      <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
         <span>Weakest questions (≥ 2 attempts)</span>
         ${canDrill ? `<button class="btn btn-sm btn-primary" onclick="drillWeakSpots()">Drill these →</button>` : ''}
       </div>

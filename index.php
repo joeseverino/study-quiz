@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CS6250 · Study Quiz</title>
-  <link rel="stylesheet" href="assets/css/style.css?v=20">
+  <link rel="stylesheet" href="assets/css/style.css?v=23">
 </head>
 <body>
 
@@ -158,6 +158,6 @@
   </div>
 </div>
 
-<script src="assets/js/quiz.js?v=19"></script>
+<script src="assets/js/quiz.js?v=20"></script>
 </body>
 </html>

@@ -473,29 +473,6 @@ function exportDeckState(deckId) {
   URL.revokeObjectURL(url);
 }
 
-function importDeckState(deckId) {
-  const input    = document.createElement('input');
-  input.type     = 'file';
-  input.accept   = '.json';
-  input.onchange = e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader  = new FileReader();
-    reader.onload = ev => {
-      try {
-        const data = JSON.parse(ev.target.result);
-        if (!Array.isArray(data.sessions) || typeof data.qstats !== 'object') {
-          throw new Error('Not a valid save-state file.');
-        }
-        pendingImportData   = data;
-        pendingImportDeckId = deckId;
-        applyImportedState();
-      } catch (err) { alert('Could not import: ' + err.message); }
-    };
-    reader.readAsText(file);
-  };
-  input.click();
-}
 
 function applyImportedState() {
   if (!pendingImportData) return;
@@ -1765,7 +1742,21 @@ document.addEventListener('DOMContentLoaded', () => {
         openModal('upload'); setTimeout(() => showModalError('Please drop a .json file.'), 50); return;
       }
       const reader   = new FileReader();
-      reader.onload  = ev => { parseAndRegisterDeck(ev.target.result, file.name); openModal('upload'); };
+      reader.onload  = ev => {
+        let parsed;
+        try { parsed = JSON.parse(ev.target.result); }
+        catch { openModal('upload'); setTimeout(() => showModalError('Invalid JSON — could not parse the file.'), 50); return; }
+        // Save state: import silently (no modal needed)
+        if (parsed && Array.isArray(parsed.sessions) && typeof parsed.qstats === 'object') {
+          pendingImportData   = parsed;
+          pendingImportDeckId = parsed.deckId || null;
+          applyImportedState();
+        } else {
+          // Deck JSON: register then open module selector
+          parseAndRegisterDeck(ev.target.result, file.name);
+          openModal('upload');
+        }
+      };
       reader.onerror = ()  => { openModal('upload'); setTimeout(() => showModalError('Could not read file.'), 50); };
       reader.readAsText(file);
     });

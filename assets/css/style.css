@@ -1395,3 +1395,130 @@ body.view-home {
   /* Shrink the centered header context on small screens */
   .header-context { max-width: 28%; font-size: 0.72rem; }
 }
+
+/* ── SRS / Mastery state badges ────────────────────────────────────────── */
+.state-badge {
+  display: inline-flex; align-items: center;
+  font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 99px; flex-shrink: 0;
+}
+.state-new      { background: rgba(120,120,130,.12); color: var(--text-3); }
+.state-learning { background: rgba(234,179,8,.18);   color: #92400e; }
+.state-review   { background: rgba(59,130,246,.14);  color: #1e40af; }
+.state-known    { background: rgba(34,197,94,.14);   color: #166534; }
+
+/* ── Flag button (in quiz meta-row) ───────────────────────────────────── */
+.flag-btn {
+  margin-left: auto; background: none; border: none; cursor: pointer;
+  color: var(--text-3); font-size: 15px; padding: 3px 6px;
+  border-radius: 8px; line-height: 1; flex-shrink: 0;
+  transition: color .15s, background .15s;
+}
+.flag-btn:hover    { background: rgba(239,68,68,.1); color: #ef4444; }
+.flag-btn.is-flagged { color: #ef4444; }
+
+/* ── Study mode toggle ────────────────────────────────────────────────── */
+.mode-toggle {
+  display: flex; gap: 6px;
+}
+.mode-toggle-btn {
+  flex: 1; padding: 9px 10px; border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,.5); backdrop-filter: blur(8px);
+  color: var(--text-2); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all .15s;
+}
+.mode-toggle-btn.active {
+  background: var(--green-mid); color: #fff; border-color: transparent;
+  box-shadow: 0 2px 8px rgba(29,158,117,.3);
+}
+.mode-toggle-btn:not(.active):hover { background: rgba(255,255,255,.8); color: var(--text); }
+
+/* ── Mastery bar (on deck cards) ──────────────────────────────────────── */
+.mastery-bar {
+  display: flex; height: 4px; border-radius: 2px; overflow: hidden;
+  margin-top: 8px; width: 100%;
+}
+.mastery-seg          { height: 100%; min-width: 0; }
+.mastery-seg.new      { background: rgba(120,120,130,.2); }
+.mastery-seg.learning { background: #eab308; }
+.mastery-seg.review   { background: #3b82f6; }
+.mastery-seg.known    { background: #22c55e; }
+
+/* ── Exam countdown line ──────────────────────────────────────────────── */
+.exam-countdown {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--text-3); margin-top: 5px; font-weight: 500;
+}
+.exam-countdown.urgent { color: #ef4444; }
+
+/* ── Cards view ───────────────────────────────────────────────────────── */
+.cards-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px; gap: 10px; flex-wrap: wrap;
+}
+.cards-title { font-size: 17px; font-weight: 700; color: var(--text); }
+.cards-search {
+  flex: 1; min-width: 130px; max-width: 260px;
+  padding: 8px 12px; border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,.75); backdrop-filter: blur(8px);
+  font-size: 13px; color: var(--text); outline: none;
+  transition: border-color .15s;
+}
+.cards-search:focus { border-color: var(--green-mid); }
+.cards-filter-bar {
+  display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px;
+  margin-bottom: 12px; scrollbar-width: none;
+}
+.cards-filter-bar::-webkit-scrollbar { display: none; }
+.cards-filter-btn {
+  flex-shrink: 0; padding: 5px 12px; border-radius: 99px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,.6);
+  font-size: 12px; font-weight: 500; color: var(--text-2);
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.cards-filter-btn.active { background: var(--green-mid); color: #fff; border-color: transparent; }
+.cards-filter-btn:not(.active):hover { background: rgba(255,255,255,.9); color: var(--text); }
+.card-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; border-radius: 12px;
+  background: rgba(255,255,255,.68);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255,255,255,.55);
+  margin-bottom: 6px; transition: box-shadow .15s;
+}
+.card-row:hover { box-shadow: 0 4px 14px rgba(0,0,0,.07); }
+.card-row-q {
+  flex: 1; font-size: 13px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.card-row-mod {
+  font-size: 11px; color: var(--text-3);
+  background: rgba(0,0,0,.05); padding: 2px 6px; border-radius: 6px;
+  white-space: nowrap; flex-shrink: 0;
+}
+.card-row-flag {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-3); font-size: 14px; padding: 3px 5px;
+  border-radius: 6px; flex-shrink: 0; line-height: 1;
+  transition: color .15s, background .15s;
+}
+.card-row-flag:hover   { background: rgba(239,68,68,.1); color: #ef4444; }
+.card-row-flag.is-flagged { color: #ef4444; }
+.cards-empty {
+  text-align: center; padding: 3rem 1rem;
+  color: var(--text-3); font-size: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .state-learning { color: #fbbf24; }
+  .state-review   { color: #60a5fa; }
+  .state-known    { color: #4ade80; }
+  .cards-search   { background: rgba(255,255,255,.08); }
+  .cards-filter-btn { background: rgba(255,255,255,.07); }
+  .card-row       { background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.1); }
+  .mode-toggle-btn { background: rgba(255,255,255,.07); }
+}

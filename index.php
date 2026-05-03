@@ -21,6 +21,7 @@
     <div class="header-right">
       <nav>
         <button data-view="home" class="active">Quiz</button>
+        <button data-view="cards">Cards</button>
         <button data-view="stats">Stats</button>
       </nav>
       <div class="menu-wrap" id="menu-wrap">
@@ -138,6 +139,9 @@
 
     <!-- ── Quiz ───────────────────────────────────────────────────────────── -->
     <div id="page-quiz" class="hidden"></div>
+
+    <!-- ── Cards ──────────────────────────────────────────────────────────── -->
+    <div id="page-cards" class="hidden"></div>
 
     <!-- ── Stats ──────────────────────────────────────────────────────────── -->
     <div id="page-stats" class="hidden">

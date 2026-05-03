@@ -65,6 +65,13 @@ let wrongAnswers     = [];   // questions answered wrong this session
 let sessionStartTime = null;
 let shuffleMode      = true; // false = in original file order
 
+let studyMode        = 'spaced';  // 'spaced' | 'classic'
+let srsOriginalCount = 0;
+let srsCompleted     = new Set(); // card IDs answered correctly this SRS session
+let lastAnswerCorrect = false;
+let cardsFilter      = 'all';
+let cardsSearch      = '';
+
 // Edit modal state
 let editView    = 'list';
 let editCardIdx = null;
@@ -141,6 +148,187 @@ function saveQStats(q) {
   if (!activeDeckId) return;
   const obj = getDeckStats(activeDeckId); obj.qstats = q; saveDeckStats(activeDeckId, obj);
 }
+
+// ── SRS helpers ────────────────────────────────────────────────────────────
+const DEFAULT_SRS = () => ({
+  correct:0, total:0, interval:0, easeFactor:2.5, repetitions:0,
+  nextReview:null, state:'new', flagged:false, lastAnswered:null
+});
+
+function getCardSRSData(qid) {
+  const qs = getQStats();
+  return { ...DEFAULT_SRS(), ...(qs[qid] || {}) };
+}
+
+function updateCardSRS(qid, correct) {
+  const qs = getQStats();
+  const s  = { ...DEFAULT_SRS(), ...(qs[qid] || {}) };
+  s.total++;
+  if (correct) s.correct++;
+  s.lastAnswered = Date.now();
+  if (correct) {
+    if      (s.repetitions === 0) s.interval = 1;
+    else if (s.repetitions === 1) s.interval = 3;
+    else s.interval = Math.round(s.interval * s.easeFactor);
+    s.interval    = Math.min(s.interval, 180);
+    s.easeFactor  = Math.max(1.3, s.easeFactor + 0.05);
+    s.repetitions++;
+  } else {
+    s.repetitions = 0;
+    s.interval    = 1;
+    s.easeFactor  = Math.max(1.3, s.easeFactor - 0.2);
+  }
+  s.nextReview = Date.now() + s.interval * 24 * 60 * 60 * 1000;
+  if      (s.repetitions === 0 && s.total === 0) s.state = 'new';
+  else if (s.repetitions === 0)                  s.state = 'learning';
+  else if (s.interval < 4)                       s.state = 'learning';
+  else if (s.interval < 21)                      s.state = 'review';
+  else                                            s.state = 'known';
+  qs[qid] = s;
+  saveQStats(qs);
+  return s;
+}
+
+function toggleFlag(qid) {
+  if (!qid) return;
+  const qs = getQStats();
+  const s  = { ...DEFAULT_SRS(), ...(qs[qid] || {}) };
+  s.flagged = !s.flagged;
+  qs[qid] = s;
+  saveQStats(qs);
+  const btn = document.getElementById('flag-btn');
+  if (btn) btn.classList.toggle('is-flagged', s.flagged);
+  if (currentView === 'cards') renderCardsView();
+}
+
+function buildSRSQueue() {
+  const now  = Date.now();
+  const qs   = getQStats();
+  const pool = allQuestions.filter(q => selectedMods.has(q.mod));
+  const due  = pool.filter(q => {
+    const s = qs[q.id];
+    return !s || !s.nextReview || s.state === 'new' || s.nextReview <= now;
+  });
+  due.sort((a, b) => {
+    const sa = qs[a.id], sb = qs[b.id];
+    const aNew = !sa || sa.state === 'new';
+    const bNew = !sb || sb.state === 'new';
+    if (aNew && !bNew) return -1;
+    if (bNew && !aNew) return  1;
+    return (sa?.nextReview || 0) - (sb?.nextReview || 0);
+  });
+  return shuffle(due);
+}
+
+function getStateCounts(deckId) {
+  const questions = getDeckQuestions(deckId);
+  const qs   = (getDeckStats(deckId).qstats) || {};
+  const now  = Date.now();
+  const c    = { new:0, learning:0, review:0, known:0, flagged:0, total: questions.length };
+  questions.forEach(q => {
+    const s = qs[q.id];
+    c[s?.state || 'new']++;
+    if (s?.flagged) c.flagged++;
+  });
+  c.due = questions.filter(q => {
+    const s = qs[q.id];
+    return !s || !s.nextReview || s.state === 'new' || s.nextReview <= now;
+  }).length;
+  return c;
+}
+
+// ── Exam countdown ─────────────────────────────────────────────────────────
+function getExamDaysLeft(deckId) {
+  const meta = getRegistry()[deckId];
+  if (!meta?.examDate) return null;
+  const exam  = new Date(meta.examDate + 'T00:00:00');
+  const today = new Date(); today.setHours(0,0,0,0);
+  return Math.round((exam - today) / 86400000);
+}
+
+function openSetExamDate(deckId) {
+  closeDeckMenuPortal();
+  const meta = getRegistry()[deckId] || {};
+  $('#modal-overlay').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  $('#modal-title').textContent = 'Set exam date';
+  const cur = meta.examDate || '';
+  $('#modal-content').innerHTML = `
+    <p style="font-size:13px;color:var(--text-3);margin-bottom:16px">
+      Enter your exam date to see a countdown and daily goal on the deck card.
+    </p>
+    <input type="date" id="exam-date-input" value="${cur}"
+      style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);
+             font-size:14px;color:var(--text);background:rgba(255,255,255,.8);margin-bottom:16px">
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary btn-block" onclick="saveExamDate('${deckId}')">Save</button>
+      ${cur ? `<button class="btn btn-block" onclick="saveExamDate('${deckId}', true)" style="color:#ef4444">Clear</button>` : ''}
+    </div>`;
+}
+
+function saveExamDate(deckId, clear) {
+  const val = clear ? '' : (document.getElementById('exam-date-input')?.value || '');
+  upsertDeckMeta(deckId, { examDate: val || null });
+  closeModal();
+  renderDeckSwitcher();
+}
+
+// ── Card browser ───────────────────────────────────────────────────────────
+function renderCardsView() {
+  const el = document.getElementById('page-cards');
+  if (!el) return;
+  if (!activeDeckId || !allQuestions.length) {
+    el.innerHTML = `<div class="cards-empty">Select a deck to browse its cards.</div>`;
+    return;
+  }
+  const qs      = getQStats();
+  const filters = ['all','new','learning','review','known','flagged'];
+  const labels  = { all:'All', new:'🆕 New', learning:'🔄 Learning', review:'📚 Review', known:'✅ Known', flagged:'🚩 Flagged' };
+  const counts  = getStateCounts(activeDeckId);
+
+  const filterBtns = filters.map(f => {
+    const cnt  = f === 'all' ? allQuestions.length : counts[f] || 0;
+    const active = cardsFilter === f ? ' active' : '';
+    return `<button class="cards-filter-btn${active}" onclick="setCardsFilter('${f}')">${labels[f]} <span style="opacity:.7">${cnt}</span></button>`;
+  }).join('');
+
+  let cards = allQuestions;
+  if (cardsFilter !== 'all') {
+    if (cardsFilter === 'flagged') {
+      cards = cards.filter(q => qs[q.id]?.flagged);
+    } else {
+      cards = cards.filter(q => (qs[q.id]?.state || 'new') === cardsFilter);
+    }
+  }
+  if (cardsSearch.trim()) {
+    const term = cardsSearch.trim().toLowerCase();
+    cards = cards.filter(q => q.q.toLowerCase().includes(term));
+  }
+
+  const rows = cards.map(q => {
+    const s     = { ...DEFAULT_SRS(), ...(qs[q.id] || {}) };
+    const state = s.state || 'new';
+    const flagCls = s.flagged ? ' is-flagged' : '';
+    return `<div class="card-row">
+      <div class="card-row-q" title="${escapeHtml(q.q)}">${escapeHtml(q.q)}</div>
+      <span class="card-row-mod">M${q.mod}</span>
+      <span class="state-badge state-${state}">${state}</span>
+      <button class="card-row-flag${flagCls}" onclick="toggleFlag('${q.id}')" title="${s.flagged ? 'Unflag' : 'Flag'}">🚩</button>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="cards-header">
+      <div class="cards-title">${escapeHtml(loadedTitle || 'Cards')}</div>
+      <input class="cards-search" type="search" placeholder="Search cards…"
+        value="${escapeHtml(cardsSearch)}"
+        oninput="cardsSearch=this.value;renderCardsView()">
+    </div>
+    <div class="cards-filter-bar">${filterBtns}</div>
+    ${rows || `<div class="cards-empty">No cards match.</div>`}`;
+}
+
+function setCardsFilter(f) { cardsFilter = f; renderCardsView(); }
 
 function localStartSession(modules) {
   const session = { id: Date.now(), modules, correct:0, total:0,
@@ -325,6 +513,8 @@ function setView(v) {
   $('#page-home').classList.toggle('hidden',  v !== 'home');
   $('#page-quiz').classList.toggle('hidden',  v !== 'quiz');
   $('#page-stats').classList.toggle('hidden', v !== 'stats');
+  const cardsPage = document.getElementById('page-cards');
+  if (cardsPage) cardsPage.classList.toggle('hidden', v !== 'cards');
   document.body.classList.toggle('view-home', v === 'home');
 
   // Header context: show deck name while studying
@@ -344,6 +534,7 @@ function setView(v) {
   updateMenuStates();
   if (v === 'stats') loadStats();
   if (v === 'home')  { updateResumeCard(); renderDeckSwitcher(); }
+  if (v === 'cards') renderCardsView();
 }
 
 function updateResumeCard() {
@@ -389,6 +580,22 @@ function renderDeckSwitcher() {
     const icon     = id === DEMO_ID ? '🐝' : id === 'deck_created' ? '✏️' : '📚';
     const metaLine = `${meta.questionCount || '?'} questions${sessions.length > 0 ? ` · ${sessions.length} session${sessions.length !== 1 ? 's' : ''}` : ''}`;
 
+    // Mastery bar
+    const sc = getStateCounts(id);
+    const masteryBar = `<div class="mastery-bar">
+      <div class="mastery-seg new"      style="flex:${sc.new}"></div>
+      <div class="mastery-seg learning" style="flex:${sc.learning}"></div>
+      <div class="mastery-seg review"   style="flex:${sc.review}"></div>
+      <div class="mastery-seg known"    style="flex:${sc.known}"></div>
+    </div>`;
+    // Exam countdown
+    const daysLeft = getExamDaysLeft(id);
+    const examHtml = daysLeft !== null
+      ? `<div class="exam-countdown${daysLeft <= 3 ? ' urgent' : ''}">
+           📅 ${daysLeft > 0 ? `${daysLeft} day${daysLeft!==1?'s':''} until exam` : daysLeft===0 ? 'Exam today!' : 'Exam passed'}
+         </div>` : '';
+    const dueHtml = sc.due > 0 ? ` · <span style="color:var(--green-mid);font-weight:600">${sc.due} due</span>` : '';
+
     const card = document.createElement('div');
     card.className = 'deck-entry' + (isActive ? ' is-active' : '');
     card.innerHTML = `
@@ -397,7 +604,9 @@ function renderDeckSwitcher() {
         <div class="deck-entry-info">
           <div class="deck-entry-title">${escapeHtml(meta.title || meta.filename || 'Untitled')}</div>
           ${meta.description ? `<div class="deck-entry-desc">${escapeHtml(meta.description)}</div>` : ''}
-          <div class="deck-entry-meta">${metaLine}</div>
+          <div class="deck-entry-meta">${metaLine}${dueHtml}</div>
+          ${masteryBar}
+          ${examHtml}
         </div>
       </div>
       <div class="deck-entry-btns">
@@ -570,6 +779,7 @@ function buildDeckMenuHtml(id) {
     <button class="menu-item" onclick="closeDeckMenuPortal();editDeck('${id}')">${SVG.edit} Edit deck</button>
     <button class="menu-item" onclick="closeDeckMenuPortal();exportDeckById('${id}')">${SVG.export} Export deck JSON</button>
     <button class="menu-item" onclick="closeDeckMenuPortal();exportDeckState('${id}')">${SVG.export} Export save state</button>
+    <button class="menu-item" onclick="openSetExamDate('${id}')">📅 Set exam date</button>
     <div class="menu-divider"></div>
     <button class="menu-item menu-item-danger" onclick="closeDeckMenuPortal();confirmRemoveDeck('${id}')">${SVG.trash} Remove</button>`;
 }
@@ -799,21 +1009,28 @@ function syncEditedDeckToStorage() {
 function renderModalModuleSelector() {
   const displayName = loadedTitle || loadedFileName || 'Deck';
   $('#modal-content').innerHTML = `
-    <div style="margin-bottom:16px">
+    <div style="margin-bottom:14px">
       <div style="font-size:15px;font-weight:600;color:var(--text)">${escapeHtml(displayName)}</div>
       ${loadedDesc ? `<div style="font-size:13px;color:var(--text-3);margin-top:3px">${escapeHtml(loadedDesc)}</div>` : ''}
-      <div style="font-size:12px;color:var(--text-3);margin-top:4px">${allQuestions.length} questions</div>
     </div>
+    <div class="mode-toggle" style="margin-bottom:14px">
+      <button class="mode-toggle-btn${studyMode==='spaced'?' active':''}" data-mode="spaced" onclick="setStudyMode('spaced')">🧠 Spaced</button>
+      <button class="mode-toggle-btn${studyMode==='classic'?' active':''}" data-mode="classic" onclick="setStudyMode('classic')">📋 Classic</button>
+    </div>
+    <div id="srs-due-info" style="font-size:13px;margin-bottom:12px;${studyMode!=='spaced'?'display:none':''}"></div>
     <p style="font-size:13px;color:var(--text-3);margin-bottom:14px">Pick modules to study.</p>
     <div class="mod-grid" id="mod-grid"></div>
-    <label class="shuffle-toggle" style="margin-top:14px">
-      <input type="checkbox" id="shuffle-chk" ${shuffleMode ? 'checked' : ''}
-             onchange="shuffleMode = this.checked">
-      <span>Shuffle questions</span>
-    </label>
+    <div id="shuffle-row" style="${studyMode==='classic'?'':'display:none'}">
+      <label class="shuffle-toggle" style="margin-top:14px">
+        <input type="checkbox" id="shuffle-chk" ${shuffleMode ? 'checked' : ''}
+               onchange="shuffleMode = this.checked">
+        <span>Shuffle questions</span>
+      </label>
+    </div>
     <button id="start-btn" class="btn btn-primary btn-block mt-1" onclick="modalStartQuiz()" disabled>Start →</button>`;
   renderModuleGrid();
   selectAll();
+  updateModalDueCount();
 }
 
 function modalStartQuiz() { closeModal(); startQuiz(); }
@@ -855,7 +1072,38 @@ function selectAll() {
 }
 function updateStartBtn() {
   const btn = $('#start-btn');
-  if (btn) btn.disabled = selectedMods.size === 0;
+  if (!btn) return;
+  if (studyMode === 'spaced') {
+    updateModalDueCount(); // this handles enabling/disabling
+  } else {
+    btn.disabled = selectedMods.size === 0;
+  }
+}
+
+function setStudyMode(mode) {
+  studyMode = mode;
+  $$('.mode-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  const shuffleRow = document.getElementById('shuffle-row');
+  if (shuffleRow) shuffleRow.style.display = mode === 'classic' ? '' : 'none';
+  updateModalDueCount();
+}
+
+function updateModalDueCount() {
+  const el = document.getElementById('srs-due-info');
+  if (!el) return;
+  if (studyMode === 'spaced') {
+    const q = buildSRSQueue();
+    el.innerHTML = q.length > 0
+      ? `<span style="color:var(--green-mid);font-weight:600">${q.length} card${q.length!==1?'s':''} due for review</span>`
+      : `<span style="color:var(--text-3)">🎉 All caught up — no cards due!</span>`;
+    const btn = document.getElementById('start-btn');
+    if (btn) btn.disabled = q.length === 0;
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+    const btn = document.getElementById('start-btn');
+    if (btn) btn.disabled = selectedMods.size === 0;
+  }
 }
 
 // ── Demo modal ─────────────────────────────────────────────────────────────
@@ -1244,9 +1492,22 @@ function startQuiz() {
     saveDeckStats(activeDeckId, obj);
   }
 
-  quizActive       = false;
-  const pool       = allQuestions.filter(q => selectedMods.has(q.mod));
-  deck             = shuffleMode ? shuffle(pool) : [...pool];
+  quizActive        = false;
+  srsCompleted      = new Set();
+  lastAnswerCorrect = false;
+
+  if (studyMode === 'spaced') {
+    deck = buildSRSQueue();
+    srsOriginalCount = deck.length;
+    if (!deck.length) { return; }
+  } else {
+    const pool = allQuestions.filter(q => selectedMods.has(q.mod));
+    deck = shuffleMode ? shuffle(pool) : [...pool];
+    srsOriginalCount = deck.length;
+  }
+
+  if (!deck.length) return;
+
   deckPos          = 0;
   round            = 1;
   sessionRight     = 0;
@@ -1275,6 +1536,7 @@ function restoreQuizShell() {
       <span class="badge" id="q-pos"></span>
       <span class="mod-tag" id="q-mod"></span>
       <span class="round-tag" id="q-round"></span>
+      <button class="flag-btn" id="flag-btn" title="Flag card" onclick="toggleFlag(currentQ&&currentQ.id)">🚩</button>
     </div>
     <div class="card quiz-card">
       <p class="q-text" id="q-text"></p>
@@ -1293,11 +1555,24 @@ function renderQuestion() {
   const pos   = deckPos + 1;
   const isTF  = currentQ.type === 'T/F';
 
-  $('#pbar').style.width    = Math.round(((pos - 1) / total) * 100) + '%';
-  $('#q-pos').textContent   = `${pos} / ${total}`;
+  if (studyMode === 'spaced') {
+    const pct = srsOriginalCount > 0 ? Math.round((srsCompleted.size / srsOriginalCount) * 100) : 0;
+    $('#pbar').style.width  = pct + '%';
+    $('#q-pos').textContent = `${srsCompleted.size} / ${srsOriginalCount}`;
+  } else {
+    $('#pbar').style.width  = Math.round(((pos - 1) / total) * 100) + '%';
+    $('#q-pos').textContent = `${pos} / ${total}`;
+  }
   $('#q-mod').textContent   = `M${currentQ.mod} · ${currentQ.mod_name || ''}`;
   $('#q-round').textContent = round > 1 ? `Round ${round}` : '';
   $('#q-text').textContent  = currentQ.q;
+
+  // Update flag button
+  const flagBtn = document.getElementById('flag-btn');
+  if (flagBtn) {
+    const srsData = getCardSRSData(currentQ.id);
+    flagBtn.classList.toggle('is-flagged', !!srsData.flagged);
+  }
 
   const opts = $('#q-opts');
   opts.innerHTML = '';
@@ -1326,6 +1601,9 @@ async function pickAnswer(chosen) {
   if (answered) return;
   answered = true;
   const correct = (chosen === currentQ.ans);
+  lastAnswerCorrect = correct;
+  updateCardSRS(currentQ.id, correct);
+  if (studyMode === 'spaced' && correct) srsCompleted.add(currentQ.id);
 
   $$('.opt').forEach(b => b.disabled = true);
   $$('.opt').forEach(btn => {
@@ -1418,15 +1696,31 @@ document.addEventListener('keydown', e => {
 
 // ── Next / Go Back ─────────────────────────────────────────────────────────
 function nextQuestion() {
-  deckPos++;
-  if (deckPos >= deck.length) {
-    if (round === 1) {
+  if (studyMode === 'spaced') {
+    if (!lastAnswerCorrect) {
+      // Requeue wrong card ~4 positions ahead
+      const insertAt = Math.min(deckPos + 4, deck.length);
+      deck.splice(insertAt, 0, currentQ);
+    }
+    deckPos++;
+    if (deckPos >= deck.length) {
       if (sessionId) localEndSession(sessionId);
       quizActive = false;
       showResults();
       return;
     }
-    round++; deck = shuffle(getPool()); deckPos = 0;
+  } else {
+    // Classic mode — original behavior
+    deckPos++;
+    if (deckPos >= deck.length) {
+      if (round === 1) {
+        if (sessionId) localEndSession(sessionId);
+        quizActive = false;
+        showResults();
+        return;
+      }
+      round++; deck = shuffle(getPool()); deckPos = 0;
+    }
   }
   renderQuestion();
 }

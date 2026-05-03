@@ -304,8 +304,12 @@ function openStudyOptions() {
 // "Study →" button on a deck card
 function studyDeck(deckId) {
   if (!loadDeckIntoMemory(deckId)) return;
-  tryRestoreDeckState();
-  if (quizActive) { setView('quiz'); } else { openStudyOptions(); }
+  // Always open the module selector — never auto-resume a stale session.
+  // Save current progress first so the "Continue session" banner can offer it.
+  if (quizActive) saveDeckState();
+  quizActive = false;
+  deck = []; deckPos = 0;
+  openStudyOptions();
 }
 
 function editDeck(deckId) {

@@ -594,12 +594,15 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   height: calc(100vh - 52px);
   height: calc(100dvh - 52px); /* dynamic viewport — iOS Safari fix */
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   position: relative;
   /* escape main's padding so cards go edge-to-edge */
   margin: -2rem -1rem;
   padding: 2rem;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Scroll-lock when home is active (position:fixed required for iOS rubber-band) */
@@ -619,14 +622,17 @@ body.view-home {
   max-width: 580px;
   position: relative;
   z-index: 1;
+  /* push content down so it's roughly centered when the deck list is short */
+  margin-top: auto;
+  margin-bottom: auto;
 }
 
 /* ── Home footer link ─────────────────────────────────────────────────── */
 .home-footer-link {
-  position: absolute;
-  bottom: 1.25rem;
-  left: 50%;
-  transform: translateX(-50%);
+  /* no longer absolute — sits below .home-content in the flex column */
+  flex-shrink: 0;
+  margin-top: 1.25rem;
+  padding-bottom: 0.25rem;
   font-size: 12px;
   color: var(--text-3);
   text-decoration: none;

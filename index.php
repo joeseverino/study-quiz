@@ -165,6 +165,6 @@
   <button class="btn btn-primary" id="btn-next" onclick="nextQuestion()">Next →</button>
 </div>
 
-<script src="assets/js/quiz.js?v=23"></script>
+<script src="assets/js/quiz.js?v=24"></script>
 </body>
 </html>

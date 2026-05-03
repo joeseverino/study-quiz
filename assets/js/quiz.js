@@ -292,11 +292,20 @@ function loadDeckIntoMemory(deckId) {
   return true;
 }
 
+// Open module selector / resume prompt for a loaded deck (never the file picker)
+function openStudyOptions() {
+  const titles = { upload:'Load deck', create:'Create deck', demo:'Demo', edit:'Edit deck' };
+  $('#modal-overlay').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  $('#modal-title').textContent = 'Study deck';
+  renderModalModuleSelector();
+}
+
 // "Study →" button on a deck card
 function studyDeck(deckId) {
   if (!loadDeckIntoMemory(deckId)) return;
   tryRestoreDeckState();
-  if (quizActive) { setView('quiz'); } else { openModal('upload'); }
+  if (quizActive) { setView('quiz'); } else { openStudyOptions(); }
 }
 
 function editDeck(deckId) {
@@ -410,7 +419,8 @@ function confirmRemoveDeck(id) {
 }
 
 function removeDeck(id) {
-  if (id === activeDeckId) {
+  const wasActive = id === activeDeckId;
+  if (wasActive) {
     if (quizActive && sessionId) { localEndSession(sessionId); }
     sessionId    = null; quizActive   = false;
     deck         = []; deckPos      = 0;
@@ -418,12 +428,12 @@ function removeDeck(id) {
     selectedMods = new Set();
     loadedTitle  = ''; loadedDesc   = ''; loadedFileName = '';
     setActiveDeckId(null);
-    updateResumeCard();
   }
   deleteDeckMeta(id);
   try { localStorage.removeItem(deckQsKey(id));    } catch {}
   try { localStorage.removeItem(deckStatsKey(id)); } catch {}
-  renderDeckSwitcher();
+  // Always return to home so the quiz view can't linger with deleted questions
+  setView('home');
   updateMenuStates();
 }
 
@@ -631,7 +641,6 @@ function handleOverlayClick(e) {
 
 // ── Upload modal ───────────────────────────────────────────────────────────
 function renderUploadModal() {
-  if (allQuestions.length > 0) { renderModalModuleSelector(); return; }
 
   $('#modal-content').innerHTML = `
     <div id="drop-zone">

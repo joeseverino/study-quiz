@@ -77,6 +77,9 @@ let createCorrect = 0;
 let pendingImportData   = null;
 let pendingImportDeckId = null;
 
+let currentView = 'home';   // active view — controls header menu visibility
+let statsDeckId = null;     // deck shown on stats page; null = active, 'all' = aggregate
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 const $  = (s, ctx = document) => ctx.querySelector(s);
 const $$ = (s, ctx = document) => [...ctx.querySelectorAll(s)];
@@ -302,11 +305,13 @@ function editDeck(deckId) {
 
 // ── View switching ─────────────────────────────────────────────────────────
 function setView(v) {
+  currentView = v;
   $$('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === v));
   $('#page-home').classList.toggle('hidden',  v !== 'home');
   $('#page-quiz').classList.toggle('hidden',  v !== 'quiz');
   $('#page-stats').classList.toggle('hidden', v !== 'stats');
   document.body.classList.toggle('view-home', v === 'home');
+  updateMenuStates();
   if (v === 'stats') loadStats();
   if (v === 'home')  { updateResumeCard(); renderDeckSwitcher(); }
 }
@@ -350,38 +355,53 @@ function renderDeckSwitcher() {
     const meta     = reg[id];
     const stats    = getDeckStats(id);
     const sessions = (stats.sessions || []).filter(s => s.ended_at);
-    const hasState = !!(stats.deckState);
     const isActive = id === activeDeckId;
-
-    const icon = id === DEMO_ID ? '🐝' : id === 'deck_created' ? '✏️' : '📚';
-
-    const stateTag = hasState
-      ? `<span class="deck-state-badge">▶ Q${(stats.deckState.deckPos||0)+1} / ${stats.deckState.deckIds?.length||'?'}</span>`
-      : '';
-    const sessionTag = sessions.length > 0
-      ? `${sessions.length} session${sessions.length !== 1 ? 's' : ''}`
-      : '';
+    const icon     = id === DEMO_ID ? '🐝' : id === 'deck_created' ? '✏️' : '📚';
+    const metaLine = `${meta.questionCount || '?'} questions${sessions.length > 0 ? ` · ${sessions.length} session${sessions.length !== 1 ? 's' : ''}` : ''}`;
 
     const card = document.createElement('div');
     card.className = 'deck-entry' + (isActive ? ' is-active' : '');
     card.innerHTML = `
-      <div class="deck-entry-left">
+      <div class="deck-entry-main">
         <div class="deck-entry-icon">${icon}</div>
         <div class="deck-entry-info">
           <div class="deck-entry-title">${escapeHtml(meta.title || meta.filename || 'Untitled')}</div>
           ${meta.description ? `<div class="deck-entry-desc">${escapeHtml(meta.description)}</div>` : ''}
-          <div class="deck-entry-meta">
-            ${meta.questionCount || '?'} questions${sessionTag ? ' · ' + sessionTag : ''}${stateTag ? ' · ' + stateTag : ''}
-          </div>
+          <div class="deck-entry-meta">${metaLine}</div>
         </div>
       </div>
-      <div class="deck-entry-right">
+      <div class="deck-entry-btns">
         <button class="btn btn-primary deck-study-btn" onclick="studyDeck('${id}')">Study →</button>
-        <div class="deck-entry-actions">
-          <button class="btn btn-sm" onclick="editDeck('${id}')" title="Edit cards">✎ Edit</button>
-          <button class="btn btn-sm" onclick="exportDeckState('${id}')" title="Export save state">↓ Export</button>
-          <button class="btn btn-sm" onclick="importDeckState('${id}')" title="Import save state">↑ Import</button>
-          <button class="btn btn-sm deck-remove-btn" onclick="confirmRemoveDeck('${id}')" title="Remove deck">✕</button>
+        <button class="btn" onclick="viewDeckStats('${id}')">Stats</button>
+        <div class="deck-menu-wrap" id="dm-wrap-${id}">
+          <button class="deck-menu-btn" onclick="toggleDeckMenu(event,'${id}')" title="More options">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
+            </svg>
+          </button>
+          <div class="deck-menu hidden" id="dm-${id}">
+            <button class="menu-item" onclick="openEditDetailsModal('${id}')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              Edit details
+            </button>
+            <button class="menu-item" onclick="editDeck('${id}')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              Edit cards
+            </button>
+            <button class="menu-item" onclick="exportDeckById('${id}')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export deck JSON
+            </button>
+            <button class="menu-item" onclick="exportDeckState('${id}')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export save state
+            </button>
+            <div class="menu-divider"></div>
+            <button class="menu-item menu-item-danger" onclick="confirmRemoveDeck('${id}')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+              Remove
+            </button>
+          </div>
         </div>
       </div>`;
     listEl.appendChild(card);
@@ -524,6 +544,78 @@ function applyImportedState() {
   alert('Save state imported successfully!');
 }
 
+// ── Deck management helpers ───────────────────────────────────────────────
+
+// Navigate to stats page pre-filtered to a specific deck
+function viewDeckStats(deckId) {
+  statsDeckId = deckId;
+  setView('stats');
+}
+
+// Called by the stats deck picker <select>
+function statsChangeDeck(val) {
+  statsDeckId = val;
+  loadStats();
+}
+
+// Export just the question JSON (no stats) for a deck by id
+function exportDeckById(deckId) {
+  const meta = getRegistry()[deckId];
+  if (!meta) return;
+  const qs = getDeckQuestions(deckId);
+  if (!qs.length) return;
+  const payload = { title: meta.title || '', description: meta.description || '', questions: qs };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = ((meta.title || meta.filename || 'deck').replace(/[^a-z0-9]/gi, '_').toLowerCase()) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Toggle a per-deck ⋯ dropdown (closes all others first)
+function toggleDeckMenu(e, id) {
+  e.stopPropagation();
+  const target = document.getElementById('dm-' + id);
+  if (!target) return;
+  const isOpen = !target.classList.contains('hidden');
+  document.querySelectorAll('.deck-menu').forEach(m => m.classList.add('hidden'));
+  if (!isOpen) target.classList.remove('hidden');
+}
+
+// Open a modal to edit deck name + description
+function openEditDetailsModal(deckId) {
+  const meta = getRegistry()[deckId];
+  if (!meta) return;
+  $('#modal-title').textContent = 'Edit deck details';
+  $('#modal-content').innerHTML = `
+    <div class="form-group">
+      <label>Deck name</label>
+      <input id="edit-details-name" type="text" value="${escapeHtml(meta.title || '')}" placeholder="Deck name">
+    </div>
+    <div class="form-group">
+      <label>Description <span class="form-optional">(optional)</span></label>
+      <textarea id="edit-details-desc" rows="2" placeholder="Short description">${escapeHtml(meta.description || '')}</textarea>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveEditDetails('${deckId}')">Save</button>
+    </div>`;
+  $('#modal-overlay').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => document.getElementById('edit-details-name')?.focus(), 60);
+}
+
+function saveEditDetails(deckId) {
+  const name = (document.getElementById('edit-details-name')?.value || '').trim();
+  const desc = (document.getElementById('edit-details-desc')?.value || '').trim();
+  upsertDeckMeta(deckId, { title: name, description: desc });
+  if (deckId === activeDeckId) { loadedTitle = name; loadedDesc = desc; }
+  closeModal();
+  renderDeckSwitcher();
+}
+
 // ── Modal system ───────────────────────────────────────────────────────────
 function openModal(type) {
   $('#modal-overlay').classList.remove('hidden');
@@ -550,14 +642,14 @@ function renderUploadModal() {
   $('#modal-content').innerHTML = `
     <div id="drop-zone">
       <div class="dz-icon">📂</div>
-      <div class="dz-title">Drop your questions.json here</div>
+      <div class="dz-title">Drop a deck or save-state JSON</div>
       <div class="dz-sub">or click to browse</div>
       <input type="file" id="modal-file-input" accept=".json,application/json" style="display:none">
       <button class="btn btn-primary btn-sm" onclick="$('#modal-file-input').click()">Choose file</button>
       <p id="modal-file-error" style="color:var(--red);font-size:12px;margin-top:10px;display:none;text-align:center"></p>
     </div>
     <p style="font-size:11px;color:var(--text-3);text-align:center;margin-top:10px">
-      Read locally — nothing is uploaded to the server.
+      Deck JSON or save-state files — read locally, nothing uploaded.
     </p>`;
 
   const dz    = $('#drop-zone');
@@ -578,9 +670,25 @@ function renderUploadModal() {
 
 function readJsonFile(file) {
   const reader   = new FileReader();
-  reader.onload  = e => parseAndRegisterDeck(e.target.result, file.name);
+  reader.onload  = e => detectAndLoadFile(e.target.result, file.name);
   reader.onerror = () => showModalError('Could not read file.');
   reader.readAsText(file);
+}
+
+// Route uploaded JSON: save state → applyImportedState; deck pack → parseAndRegisterDeck
+function detectAndLoadFile(text, filename) {
+  let parsed;
+  try { parsed = JSON.parse(text); }
+  catch { showModalError('Invalid JSON — could not parse the file.'); return; }
+  // Save states have sessions[] + qstats{}
+  if (parsed && Array.isArray(parsed.sessions) && typeof parsed.qstats === 'object') {
+    pendingImportData   = parsed;
+    pendingImportDeckId = parsed.deckId || null;
+    closeModal();
+    applyImportedState();
+    return;
+  }
+  parseAndRegisterDeck(text, filename);
 }
 
 // Handles both bare array and {title,description,questions} formats
@@ -1412,45 +1520,79 @@ function loadStats() {
   const page = $('#page-stats');
   page.innerHTML = '<div class="spinner"></div>';
 
-  if (!activeDeckId || !allQuestions.length) {
-    page.innerHTML = `<div class="stats-page">
-      <h2>Stats</h2>
-      <div class="empty-state" style="padding:3rem 0">
-        <p>Load a deck to see your stats.</p>
-      </div>
-    </div>`;
+  const reg        = getRegistry();
+  const allDeckIds = Object.keys(reg);
+
+  if (allDeckIds.length === 0) {
+    page.innerHTML = `<div class="stats-page"><h2>Stats</h2><div class="empty-state" style="padding:3rem 0"><p>Load a deck to see your stats.</p></div></div>`;
     return;
   }
 
-  const { totals, sessions, weak } = localGetStats();
-  const ta  = totals.total_answered || 0;
-  const tc  = totals.total_correct  || 0;
-  const ts  = totals.total_sessions || 0;
+  // Determine which deck(s) to show — respect statsDeckId, fall back to active, then all
+  const viewId  = statsDeckId || activeDeckId || 'all';
+  const targets = viewId === 'all' ? allDeckIds : (reg[viewId] ? [viewId] : allDeckIds);
+
+  // Build deck picker
+  const pickerHtml = `
+    <select class="stats-deck-select" onchange="statsChangeDeck(this.value)">
+      <option value="all" ${viewId === 'all' ? 'selected' : ''}>All decks</option>
+      ${allDeckIds.map(id => {
+          const m = reg[id];
+          return `<option value="${id}" ${viewId === id ? 'selected' : ''}>${escapeHtml(m.title || m.filename || 'Untitled')}</option>`;
+        }).join('')}
+    </select>`;
+
+  // Aggregate data across target decks
+  let aggSessions = [], aggQStats = {}, aggQs = [];
+  targets.forEach(id => {
+    const ds = getDeckStats(id);
+    aggSessions = aggSessions.concat(ds.sessions || []);
+    Object.entries(ds.qstats || {}).forEach(([qid, stat]) => {
+      if (aggQStats[qid]) {
+        aggQStats[qid].total_attempts += stat.total_attempts;
+        aggQStats[qid].correct_count  += stat.correct_count;
+        if ((stat.last_seen || '') > (aggQStats[qid].last_seen || '')) aggQStats[qid].last_seen = stat.last_seen;
+      } else {
+        aggQStats[qid] = { ...stat };
+      }
+    });
+    aggQs = aggQs.concat(getDeckQuestions(id));
+  });
+
+  const qMap    = {};
+  aggQs.forEach(q => { qMap[q.id] = q; });
+
+  const sessions = aggSessions.filter(s => s.ended_at);
+  const ta  = sessions.reduce((n, s) => n + s.total,   0);
+  const tc  = sessions.reduce((n, s) => n + s.correct, 0);
+  const ts  = sessions.length;
   const pct = ta > 0 ? Math.round(tc / ta * 100) : 0;
 
-  const sessionRows = sessions.length === 0
+  const recent = [...sessions]
+    .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
+    .slice(0, 20);
+
+  const weak = Object.values(aggQStats)
+    .filter(q => q.total_attempts >= 2)
+    .map(q => ({ ...q, wrong_count: q.total_attempts - q.correct_count, pct: Math.round(100 * q.correct_count / q.total_attempts * 10) / 10 }))
+    .sort((a, b) => a.pct - b.pct)
+    .slice(0, 10);
+
+  const sessionRows = recent.length === 0
     ? `<tr><td colspan="4" style="text-align:center;color:var(--text-3);padding:1.5rem">No completed sessions yet</td></tr>`
-    : sessions.map(s => {
+    : recent.map(s => {
         let mods = '—';
         try { mods = JSON.parse(s.modules).map(m => `M${m}`).join(', '); } catch {}
         const p   = s.total > 0 ? Math.round(s.correct / s.total * 100) : 0;
         const cls = p >= 70 ? 'good' : p >= 50 ? 'mid' : 'low';
-        const dt  = (() => {
-          try { return new Date(s.started_at).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }); }
-          catch { return s.started_at; }
-        })();
-        return `<tr>
-          <td>${dt}</td>
-          <td style="color:var(--text-3)">${mods}</td>
-          <td>${s.correct}/${s.total}</td>
-          <td><span class="pct-pill ${cls}">${p}%</span></td>
-        </tr>`;
+        const dt  = (() => { try { return new Date(s.started_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return s.started_at; } })();
+        return `<tr><td>${dt}</td><td style="color:var(--text-3)">${mods}</td><td>${s.correct}/${s.total}</td><td><span class="pct-pill ${cls}">${p}%</span></td></tr>`;
       }).join('');
 
   const weakRows = weak.length === 0
     ? `<div class="text-muted" style="padding:0.75rem 0">Answer ≥ 2 questions to see your weak spots.</div>`
     : weak.map(w => {
-        const q     = allQuestions.find(x => x.id === w.question_id);
+        const q     = qMap[w.question_id];
         const qtext = q ? q.q : `Question ${w.question_id}`;
         return `<div class="weak-item">
           <div class="weak-q">${escapeHtml(qtext)}</div>
@@ -1462,10 +1604,15 @@ function loadStats() {
         </div>`;
       }).join('');
 
-  const deckLabel = loadedTitle || loadedFileName || 'Active deck';
+  // Drill button only works when the viewed deck is also the active deck
+  const canDrill = weak.length > 0 && targets.length === 1 && targets[0] === activeDeckId && allQuestions.length > 0;
+
   page.innerHTML = `
     <div class="stats-page">
-      <h2>Stats <span style="font-size:14px;font-weight:400;color:var(--text-3)">— ${escapeHtml(deckLabel)}</span></h2>
+      <div class="stats-header">
+        <h2>Stats</h2>
+        ${pickerHtml}
+      </div>
       <div class="overview-grid">
         <div class="stat-box"><div class="stat-val">${ts}</div><div class="stat-lbl">Sessions</div></div>
         <div class="stat-box"><div class="stat-val">${ta}</div><div class="stat-lbl">Answered</div></div>
@@ -1473,7 +1620,7 @@ function loadStats() {
       </div>
       <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
         <span>Weakest questions (≥ 2 attempts)</span>
-        ${weak.length > 0 ? `<button class="btn btn-sm btn-primary" onclick="drillWeakSpots()">Drill these →</button>` : ''}
+        ${canDrill ? `<button class="btn btn-sm btn-primary" onclick="drillWeakSpots()">Drill these →</button>` : ''}
       </div>
       <div class="weak-list">${weakRows}</div>
       <div class="section-title mt-2">Recent sessions</div>
@@ -1504,11 +1651,17 @@ function closeMenu() {
 }
 
 function updateMenuStates() {
-  const has = allQuestions.length > 0;
-  ['mi-edit','mi-export'].forEach(id => {
+  const has     = allQuestions.length > 0;
+  const inStudy = currentView === 'quiz' && has;
+  ['mi-edit', 'mi-export'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.disabled = !has;
+    if (!el) return;
+    el.disabled      = !has;
+    el.style.display = inStudy ? '' : 'none';
   });
+  // Hide the divider above Reset when the study-only items are hidden
+  const divider = document.querySelector('.menu-dropdown .menu-divider');
+  if (divider) divider.style.display = inStudy ? '' : 'none';
 }
 
 function menuEdit() {
@@ -1589,6 +1742,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('click', e => {
     if (!document.getElementById('menu-wrap')?.contains(e.target)) closeMenu();
+    if (!e.target.closest?.('.deck-menu-wrap')) {
+      document.querySelectorAll('.deck-menu').forEach(m => m.classList.add('hidden'));
+    }
   });
 
   // Drag-to-upload on the home Upload card

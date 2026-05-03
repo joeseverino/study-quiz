@@ -1,10 +1,3 @@
-<?php
-// Auto-create DB on first visit
-$db_path = __DIR__ . '/db/quiz.sqlite';
-if (!file_exists($db_path)) {
-    ob_start(); require __DIR__ . '/setup.php'; ob_end_clean();
-}
-?>
 <!DOCTYPE html>
 <html lang="en">
 <head>

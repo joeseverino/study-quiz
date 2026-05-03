@@ -1,83 +1,94 @@
-# CS6250 Study Quiz
+# Study Quiz
 
-Interactive quiz web app for OMSCS CS6250 Exam 2. Questions are stored locally (never committed to git).
+A lightweight, self-hosted multiple-choice quiz app. All progress saves locally in the browser — nothing is uploaded to a server.
 
-## Setup
+## Features
 
-### 1. Point your domain
-In your DNS / hosting panel, point `quiz.jseverino.net` to your server and set the document root to this folder.
+- Upload any `.json` deck, or build one from scratch in the app
+- Module filtering, shuffle mode, streaks, confidence tracking
+- Weak-spot drilling and session history
+- Export / import save states to sync progress across devices
+- Light + dark mode
 
-### 2. Server requirements
-- PHP 7.4+ with PDO and SQLite3 extensions
-- Apache or Nginx with PHP-FPM
+---
 
-### 3. Questions file
-Your questions are already in `data/questions.php` (gitignored — local only).
-If you clone this repo on another machine, copy `data/questions.example.php` → `data/questions.php` and fill it in.
+## Quick start
 
-### 4. Database
-The SQLite database is created automatically on first visit. It lives at `db/quiz.sqlite` (gitignored).
+**No server required** — just open `index.php` directly in your browser.
 
-To create it manually:
+Or run a local dev server:
+
 ```bash
-php setup.php
-```
-
-Or just visit the site — `index.php` auto-runs setup if the DB doesn't exist.
-
-### 5. File permissions
-```bash
-chmod 755 db/
-chmod 644 db/quiz.sqlite   # after first visit
+cd study-quiz
+php -S localhost:8080
+# open http://localhost:8080
 ```
 
 ---
 
-## Nginx config (example)
+## Deck format
+
+Decks are `.json` files (gitignored — never committed). Copy the example to get started:
+
+```bash
+cp data/questions.example.json data/questions.json
+```
+
+Full format documented in `data/questions.example.json`. The short version:
+
+```json
+{
+  "title": "My Deck",
+  "description": "What this deck covers.",
+  "questions": [
+    {
+      "id": "q1",
+      "mod": 1,
+      "mod_name": "Module Name",
+      "q": "Question text?",
+      "opts": ["Option A", "Option B", "Option C", "Option D"],
+      "ans": 0,
+      "exp": "Explanation shown after answering."
+    }
+  ]
+}
+```
+
+You can also build and export decks directly in the app (Create → export as JSON).
+
+---
+
+## Deploying to a server
+
+Any static file server works. Example configs:
+
+### Nginx
 
 ```nginx
 server {
     listen 80;
-    server_name quiz.jseverino.net;
+    server_name yourdomain.com;
     root /path/to/study-quiz;
-    index index.php;
+    index index.php index.html;
 
     location / {
-        try_files $uri $uri/ /index.php?$query_string;
+        try_files $uri $uri/ /index.php;
     }
 
-    location ~ \.php$ {
-        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
-        fastcgi_index index.php;
-        include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
-    }
-
-    # Block direct access to data/ and db/
-    location ~ ^/(data|db)/ {
+    # Block direct access to data/
+    location ~ ^/data/ {
         deny all;
         return 404;
     }
 }
 ```
 
-## Apache config (example .htaccess)
+### Apache
 
 ```apache
-# Block access to data/ and db/
-<DirectoryMatch "^.*(data|db)$">
+<DirectoryMatch "^.*(data)$">
     Require all denied
 </DirectoryMatch>
-```
-
----
-
-## Running locally (dev)
-
-```bash
-cd study-quiz
-php -S localhost:8080
-# then open http://localhost:8080
 ```
 
 ---
@@ -86,27 +97,12 @@ php -S localhost:8080
 
 ```
 study-quiz/
-├── index.php              # Main app shell
-├── api.php                # REST API (questions, sessions, stats)
-├── setup.php              # DB setup (run once)
+├── index.php                   # App entry point (pure HTML)
 ├── assets/
-│   ├── css/style.css      # Styles (light + dark mode)
-│   └── js/quiz.js         # Quiz logic
+│   ├── css/style.css           # Styles (light + dark mode)
+│   └── js/quiz.js              # All quiz logic (localStorage, no backend)
 ├── data/
-│   ├── questions.php      # ← YOUR QUESTIONS (gitignored, local only)
-│   └── questions.example.php
-├── db/
-│   └── quiz.sqlite        # SQLite DB (gitignored, auto-created)
+│   ├── questions.json          # Your questions (gitignored, local only)
+│   └── questions.example.json # Format reference
 └── .gitignore
 ```
-
-## API endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `api.php?action=questions` | Returns questions (no answers) |
-| GET | `api.php?action=modules` | Returns module list |
-| POST | `api.php?action=start_session` | Creates session, returns `session_id` |
-| POST | `api.php?action=answer` | Records answer, returns correctness + explanation |
-| POST | `api.php?action=end_session` | Finalizes session |
-| GET | `api.php?action=stats` | Returns overall stats, session history, weakest questions |

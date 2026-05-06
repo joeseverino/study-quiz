@@ -31,3 +31,6 @@ __pycache__/
 data/questions.json
 db/quiz.sqlite
 db/*.sqlite
+
+# Local docs, screenshots, writeups
+_docs/

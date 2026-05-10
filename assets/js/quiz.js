@@ -1163,6 +1163,9 @@ function renderDemoModal() {
 function startDemo() {
   registerAndLoadDeck({ id:DEMO_ID, title:DEMO_TITLE, description:DEMO_DESC,
                         filename:'demo', questions:DEMO_QUESTIONS });
+  studyMode = 'classic';
+  shuffleMode = false;
+  startQuiz();
 }
 
 // ── Create deck ────────────────────────────────────────────────────────────
@@ -1699,8 +1702,8 @@ async function pickAnswer(chosen) {
   $('#quiz-footer').classList.remove('quiz-footer-hidden');
   $('#kbd-hint').innerHTML = 'Press <kbd>Space</kbd> or <kbd>→</kbd> for next';
 
-  const streakText = currentStreak >= 2 ? `  ${ICONS.streak} ${currentStreak}` : '';
-  $('#session-score').textContent = `Session: ${sessionRight} / ${sessionTotal} correct${streakText}`;
+  const streakText = currentStreak >= 2 ? ` &nbsp;${ICONS.streak} ${currentStreak}` : '';
+  $('#session-score').innerHTML = `Session: ${sessionRight} / ${sessionTotal} correct${streakText}`;
 
   if (sessionId) localRecordAnswer(sessionId, currentQ.id, currentQ.mod, correct ? 1 : 0, currentQ);
 }
@@ -1779,6 +1782,7 @@ function quitQuiz() {
 // ── Results ────────────────────────────────────────────────────────────────
 function showResults() {
   quizActive = false;
+  $('#quiz-footer').classList.add('quiz-footer-hidden');
   if (sessionTotal === 0) { setView('home'); return; }
 
   const n   = sessionTotal;

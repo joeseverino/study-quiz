@@ -589,7 +589,9 @@ button, .btn, a { -webkit-tap-highlight-color: transparent; }
   #page-home { margin: -1rem -0.75rem; padding: 1rem 0.75rem; }
   .mod-grid { grid-template-columns: 1fr 1fr; }
   .q-text { font-size: 15px; }
-  header { padding: 0 1rem; }
+  header { padding: 0 0.75rem; }
+  nav button { padding: 5px 8px; font-size: 12px; }
+  .logo { font-size: 14px; gap: 6px; }
   .deck-entry { overflow: hidden; min-width: 0; }
   .deck-entry-btns { flex-shrink: 0; gap: 6px; }
   .deck-study-btn { font-size: 13px; padding: 7px 12px; }
@@ -601,6 +603,11 @@ button, .btn, a { -webkit-tap-highlight-color: transparent; }
   #page-cards { padding: 1rem 0.75rem 2rem; }
   .cards-header { flex-direction: row; align-items: center; }
   .cards-search { max-width: 180px; }
+}
+
+@media (max-width: 360px) {
+  nav button { padding: 4px 6px; font-size: 11px; }
+  .header-context { display: none; }
 }
 
 /* ── Home page layout ─────────────────────────────────────────────────── */

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Study Quiz</title>
-  <link rel="stylesheet" href="assets/css/style.css?v=25">
+  <link rel="stylesheet" href="assets/css/style.css?v=26">
 </head>
 <body>
 
@@ -120,8 +120,8 @@
 
           <!-- Demo -->
           <div class="mode-card" role="button" tabindex="0"
-               onclick="openModal('demo')"
-               onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openModal('demo')}">
+               onclick="startDemo()"
+               onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();startDemo()}">
             <div class="mode-icon-wrap">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="10"/>
@@ -169,6 +169,6 @@
   <button class="btn btn-primary" id="btn-next" onclick="nextQuestion()">Next <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
 </div>
 
-<script src="assets/js/quiz.js?v=24"></script>
+<script src="assets/js/quiz.js?v=25"></script>
 </body>
 </html>

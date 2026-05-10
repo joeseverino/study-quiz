@@ -16,15 +16,29 @@ Live demo: [quiz.jseverino.net](https://quiz.jseverino.net)
 - Try it instantly with the built-in Georgia Tech trivia demo
 
 **Studying**
+- Two study modes:
+  - **Spaced** (default) — SM-2-style spaced repetition. Wrong answers resurface within the same session, and cards mature through `New → Learning → Review → Known` based on accuracy and time since last seen
+  - **Classic** — one pass through every selected card, optionally shuffled
 - Module filtering — study only the modules you want within a deck
-- Shuffle mode — randomize question order each session
 - Streak tracking — see your current and best streak during a session
 - Confidence rating — mark each question "Got it" or "Still shaky" after answering
+- Card flagging — flag tricky cards from the quiz or browser for later review
 - Resume — pick up exactly where you left off if you leave mid-session
 - Keyboard shortcuts — press `1`–`4` to select an answer, `Space` or `→` to advance
 
+**Cards browser**
+- Dedicated Cards tab to browse the active deck outside of a study session
+- Filter by mastery state (`New`, `Learning`, `Review`, `Known`) or `Flagged`
+- Search by question text or option text
+- Toggle a card's flag without starting a session
+
+**Exam countdown**
+- Set an exam date per deck from the deck `⋯` menu
+- The deck card shows days remaining and turns red in the final stretch
+
 **Stats**
 - Per-deck or all-decks aggregate view
+- Mastery breakdown bar on each deck card (new / learning / review / known split)
 - Accuracy-over-time chart (last 30 sessions)
 - Weakest questions ranked by accuracy (requires ≥ 2 attempts)
 - Weak-spot drill mode — start a focused session on your worst questions
@@ -38,6 +52,7 @@ Live demo: [quiz.jseverino.net](https://quiz.jseverino.net)
 
 **Display**
 - Light and dark mode — follows your OS preference automatically
+- Responsive layout that works on phones, tablets, and desktop
 
 ---
 
@@ -152,7 +167,10 @@ study-quiz/
 │   ├── css/style.css            # All styles, light + dark mode
 │   └── js/quiz.js               # All app logic — localStorage only, no backend
 ├── data/
-│   └── questions.example.json  # Deck format reference
+│   ├── deck.schema.json         # JSON Schema for deck files
+│   └── questions.example.json   # Deck format reference
+├── skills/
+│   └── deck-generator/          # Claude skill for AI-assisted deck creation
 └── .gitignore
 ```
 
